@@ -55,7 +55,8 @@ ALL_PAIRS.forEach(p => {
         _tp1Hit: false,
         _partialSLLogged: false,
         _pendingEntry: false,
-        _ema144Aligned: false
+        _ema144Aligned: false,
+        _entryTaken: false
     };
     EMA_PERIODS.forEach(period => {
         pairState[p].ema[period] = null;
@@ -65,6 +66,31 @@ ALL_PAIRS.forEach(p => {
     candleCloseProcessed[p] = false;
     lastSignalTime[p] = 0;
 });
+
+// ==================== REINICIAR ESTADO ====================
+function resetPairState(sym) {
+    const st = pairState[sym];
+    if (!st) return;
+    
+    console.log(`🔄 ${sym}: Reiniciando estado para nuevas entradas...`);
+    
+    st.lastSignal = null;
+    st.signalExpired = false;
+    st._trendStarted = false;
+    st._trendStartTime = null;
+    st._trendAge = 0;
+    st._tp1Hit = false;
+    st._partialSLLogged = false;
+    st._pendingEntry = false;
+    st._pendingEntryPrice = null;
+    st._pendingEntryTime = null;
+    st._ema144Aligned = false;
+    st._entryTaken = false;
+    st.waitingForNewTrend = false;
+    st.lastTrend = null;
+    
+    console.log(`✅ ${sym}: Estado reiniciado - Listo para nueva entrada`);
+}
 
 // ==================== TELEGRAM ====================
 async function sendTelegramMessage(message) {
@@ -272,6 +298,7 @@ function processNextInQueue() {
     }
 }
 
+// ==================== CHECK SIGNAL EXPIRY (CORREGIDO) ====================
 function checkSignalExpiry(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
@@ -288,6 +315,9 @@ function checkSignalExpiry(sym) {
             wins++;
             console.log(`🎯 TP1 ALCANZADO en ${sym}`);
             sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🎯✅ ¡TP1 ALCANZADO! 💰\n📈 Operación cerrada con éxito.\n🐙 ¡Excelente!`);
+
+            // ✅ REINICIAR COMPLETAMENTE PARA NUEVA ENTRADA
+            resetPairState(sym);
             return;
         }
     }
@@ -299,8 +329,25 @@ function checkSignalExpiry(sym) {
             losses++;
             console.log(`🛑 SL ALCANZADO en ${sym}`);
             sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🛑❌ ¡STOP LOSS ALCANZADO!\n📉 Operación cerrada.\n🐙 ¡Siguiente!`);
+
+            // ✅ REINICIAR COMPLETAMENTE PARA NUEVA ENTRADA
+            resetPairState(sym);
+            return;
         }
     }
+
+    if (st.signalExpired) {
+        resetPairState(sym);
+        return;
+    }
+
+    const entry = signalHistory.find(s => s.sym === sym && s.status === 'PENDIENTE');
+    if (entry && signal.status !== 'PENDIENTE') {
+        entry.status = signal.status;
+        updateHistory();
+    }
+
+    updateCard(sym);
 }
 
 // ==================== WEBSOCKET ====================
@@ -436,7 +483,7 @@ app.get('/', (req, res) => {
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
         <p style="color:#10b981;">🚀 Funcionando automáticamente</p>
-        <p style="color:#f59e0b;font-size:0.8rem;">🔄 Esperando condiciones de mercado...</p>
+        <p style="color:#f59e0b;font-size:0.8rem;">🔄 Múltiples entradas activadas</p>
         </body></html>
     `);
 });
