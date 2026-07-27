@@ -55,8 +55,13 @@
             animation: tentacle 3s ease-in-out infinite;
         }
         @keyframes tentacle {
-            0%, 100% { transform: rotate(-5deg); }
-            50% { transform: rotate(5deg); }
+            0%,
+            100% {
+                transform: rotate(-5deg);
+            }
+            50% {
+                transform: rotate(5deg);
+            }
         }
         .kraken-header .logo h1 {
             font-size: 1rem;
@@ -101,8 +106,13 @@
             background: var(--muted);
         }
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
         }
 
         .stat-chip {
@@ -126,63 +136,7 @@
         }
 
         .login-screen {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: calc(100vh - 70px);
-            background: radial-gradient(ellipse at center, #0d1528, #060a18);
-        }
-        .login-box {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 30px;
-            width: 100%;
-            max-width: 480px;
-            text-align: center;
-            box-shadow: 0 0 80px rgba(0, 212, 255, 0.04);
-        }
-        .login-box .icon {
-            font-size: 3rem;
-            margin-bottom: 6px;
-        }
-        .login-box h2 {
-            font-size: 1.1rem;
-            font-weight: 700;
-            background: linear-gradient(90deg, var(--accent), var(--accent2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 4px;
-        }
-        .login-box .subtitle {
-            font-size: 0.7rem;
-            color: var(--muted);
-            margin-bottom: 16px;
-        }
-        .login-box input, .login-box select {
-            width: 100%;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text);
-            padding: 10px 14px;
-            font-size: 0.75rem;
-            outline: none;
-            margin-bottom: 10px;
-            font-family: monospace;
-        }
-        .login-box input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 30px rgba(0, 212, 255, 0.06);
-        }
-        .login-box .hint {
-            font-size: 0.58rem;
-            color: var(--muted);
-            margin-bottom: 14px;
-            text-align: left;
-        }
-        .login-box .hint a {
-            color: var(--accent);
+            display: none;
         }
 
         .btn {
@@ -271,7 +225,8 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
-        .field input, .field select {
+        .field input,
+        .field select {
             width: 100%;
             background: var(--bg);
             border: 1px solid var(--border);
@@ -331,11 +286,21 @@
             font-weight: 700;
             font-family: monospace;
         }
-        .value.green { color: var(--green); }
-        .value.red { color: var(--red); }
-        .value.blue { color: var(--accent); }
-        .value.gold { color: var(--gold); }
-        .value.purple { color: var(--accent2); }
+        .value.green {
+            color: var(--green);
+        }
+        .value.red {
+            color: var(--red);
+        }
+        .value.blue {
+            color: var(--accent);
+        }
+        .value.gold {
+            color: var(--gold);
+        }
+        .value.purple {
+            color: var(--accent2);
+        }
 
         .pairs-grid {
             display: grid;
@@ -515,17 +480,46 @@
             font-size: 0.48rem;
             line-height: 1.5;
         }
-        .log-line.success { color: var(--green); }
-        .log-line.error { color: var(--red); }
-        .log-line.warn { color: var(--gold); }
-        .log-line.signal { color: var(--accent); font-weight: 700; }
-        .log-line.telegram { color: #0088cc; font-weight: 700; }
-        .log-line.expired { color: var(--red); font-weight: 700; }
-        .log-line.info { color: var(--muted); }
-        .log-line.alert { color: var(--gold); font-weight: 700; }
-        .log-line.candle { color: #8b5cf6; font-weight: 600; }
-        .log-line.trend { color: #f59e0b; font-weight: 600; }
-        .log-line.start { color: #10b981; font-weight: 700; }
+        .log-line.success {
+            color: var(--green);
+        }
+        .log-line.error {
+            color: var(--red);
+        }
+        .log-line.warn {
+            color: var(--gold);
+        }
+        .log-line.signal {
+            color: var(--accent);
+            font-weight: 700;
+        }
+        .log-line.telegram {
+            color: #0088cc;
+            font-weight: 700;
+        }
+        .log-line.expired {
+            color: var(--red);
+            font-weight: 700;
+        }
+        .log-line.info {
+            color: var(--muted);
+        }
+        .log-line.alert {
+            color: var(--gold);
+            font-weight: 700;
+        }
+        .log-line.candle {
+            color: #8b5cf6;
+            font-weight: 600;
+        }
+        .log-line.trend {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        .log-line.start {
+            color: #10b981;
+            font-weight: 700;
+        }
 
         .history-panel {
             background: var(--panel);
@@ -656,7 +650,8 @@
             margin-bottom: 12px;
             color: var(--accent);
         }
-        .modal-box p, .modal-box li {
+        .modal-box p,
+        .modal-box li {
             font-size: 0.65rem;
             color: var(--text);
             line-height: 1.6;
@@ -696,10 +691,15 @@
         }
 
         @media (max-width: 640px) {
-            .pairs-grid { grid-template-columns: 1fr; }
-            .kraken-header .status-bar { font-size: 0.45rem; }
-            .stats-grid { grid-template-columns: repeat(3, 1fr); }
-            .login-box { padding: 20px; margin: 10px; }
+            .pairs-grid {
+                grid-template-columns: 1fr;
+            }
+            .kraken-header .status-bar {
+                font-size: 0.45rem;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
         }
 
         ::-webkit-scrollbar {
@@ -733,44 +733,12 @@
             <span class="stat-chip">🎯 <span class="num" id="winrate-display">0%</span></span>
             <span class="stat-chip">⚡ <span class="num" id="latency-display">&lt;1s</span></span>
             <span class="stat-chip" style="border-color:var(--accent2);color:var(--accent2);">📊 <span class="num" id="feed-status">ACTIVO</span></span>
-            <button class="btn btn-secondary btn-sm" id="btn-logout" style="display:none;" onclick="logout()">⏏ Salir</button>
+            <button class="btn btn-secondary btn-sm" id="btn-logout" onclick="logout()">⏏ Salir</button>
         </div>
     </header>
 
-    <!-- ===== LOGIN ===== -->
-    <div class="login-screen" id="login-screen">
-        <div class="login-box">
-            <div class="icon">🐙</div>
-            <h2>THE KRAKEN PRO</h2>
-            <p class="subtitle">Señales al INICIO de tendencia · Análisis cierre de vela 1min</p>
-
-            <select id="account-type">
-                <option value="demo">🟢 Cuenta Demo</option>
-                <option value="real">🔴 Cuenta Real</option>
-            </select>
-            <input type="text" id="app-id" placeholder="App ID" value="33A0UhDa0Wa1FkvF9zlKh" />
-            <input type="password" id="pat-token" placeholder="PAT Token" value="pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23" />
-            <div class="hint">📌 <a href="https://app.deriv.com/account/api-token" target="_blank">Obtener PAT Token →</a></div>
-
-            <div style="border-top:1px solid var(--border);margin:10px 0;padding-top:10px;">
-                <h3 style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;">🔑 LICENSE SERIAL</h3>
-                <input type="text" id="license-key" placeholder="KRKN-XXXX-XXXX-XXXX" value="KRKN-DEMO-2024-0001" style="font-family:monospace;text-transform:uppercase;letter-spacing:1px;" />
-            </div>
-
-            <div style="border-top:1px solid var(--border);margin:10px 0;padding-top:10px;">
-                <h3 style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;">📨 TELEGRAM</h3>
-                <input type="text" id="telegram-token" placeholder="Bot Token" value="8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo" />
-                <input type="text" id="telegram-chat" placeholder="Chat ID" value="-1003177595391" />
-                <button class="btn btn-success btn-sm" onclick="testTelegram()" style="width:100%;margin-top:4px;">📨 Probar</button>
-            </div>
-
-            <button class="btn btn-primary btn-lg" onclick="connect()">▶ INICIAR KRAKEN</button>
-            <div id="login-msg" style="font-size:0.6rem;margin-top:8px;color:var(--muted);"></div>
-        </div>
-    </div>
-
     <!-- ===== MAIN APP ===== -->
-    <div id="main-app" style="display:none;">
+    <div id="main-app">
         <div class="container">
 
             <!-- DATA FEED -->
@@ -826,8 +794,8 @@
                     </div>
                 </div>
                 <div class="btn-row">
-                    <button class="btn btn-primary" id="btn-start" onclick="startSignals()">▶ ACTIVAR KRAKEN</button>
-                    <button class="btn btn-danger" id="btn-stop" onclick="stopSignals()" disabled>⏹ DETENER</button>
+                    <button class="btn btn-primary" id="btn-start" disabled>▶ ACTIVAR KRAKEN</button>
+                    <button class="btn btn-danger" id="btn-stop" onclick="stopSignals()">⏹ DETENER</button>
                     <button class="btn btn-secondary btn-sm" onclick="clearLog()">🗑 Limpiar</button>
                     <button class="btn btn-secondary btn-sm" onclick="showManualModal()">📖 Manual</button>
                 </div>
@@ -920,7 +888,7 @@
 
     <script>
         // ============================================================
-        // 🐙 THE KRAKEN PRO — DERIV EDITION v5.0
+        // 🐙 THE KRAKEN PRO — DERIV EDITION v5.0 - AUTO START
         // SEÑALES SOLO AL INICIO DE TENDENCIA
         // EMAS: 2, 5, 13, 34, 55, 89, 144
         // SL en EMA144 · Temporalidad 1 MINUTO · SOLO TP1
@@ -930,18 +898,31 @@
         const REST_BASE = 'https://api.derivws.com';
         const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
         const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
-        const EMA_FAST = 2, EMA_MEDIUM = 5, EMA_SLOW = 13;
-        const TIMEFRAME = 60; // 1 minuto
-        const TELEGRAM_TOKEN = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
-        const TELEGRAM_CHAT = '-1003177595391';
+        const TIMEFRAME = 60;
+
+        // Credenciales predefinidas
+        const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
+        const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
+        const LICENSE_KEY = 'KRKN-DEMO-2024-0001';
 
         // ==================== ESTADO ====================
-        let ws = null, signalsActive = false, dataLoaded = false, running = false;
-        let balance = 0, totalSignals = 0, wins = 0, losses = 0;
-        let pairState = {}, signalHistory = [];
-        let currentAccountType = 'demo', currentAccountId = '';
-        let appId = '', patToken = '', allAccounts = [];
-        let reconnectAttempts = 0, reconnectTimer = null;
+        let ws = null,
+            signalsActive = false,
+            dataLoaded = false,
+            running = false;
+        let balance = 0,
+            totalSignals = 0,
+            wins = 0,
+            losses = 0;
+        let pairState = {},
+            signalHistory = [];
+        let currentAccountType = 'demo',
+            currentAccountId = '';
+        let appId = APP_ID,
+            patToken = PAT_TOKEN,
+            allAccounts = [];
+        let reconnectAttempts = 0,
+            reconnectTimer = null;
         let lastCandleKey = {};
         let candleCloseProcessed = {};
         let lastSignalTime = {};
@@ -949,13 +930,14 @@
         let refreshTimer = null;
         let dataFeedActive = true;
         let licenseValid = true;
-        let licenseKey = 'KRKN-DEMO-2024-0001';
+        let licenseKey = LICENSE_KEY;
         let dataFeedTier = '1 mes';
         let dataLoadedCount = 0;
         let useSimulatedData = false;
         let analysisQueue = [];
         let isProcessingQueue = false;
         let logBuffer = [];
+        let autoStartDone = false;
 
         ALL_PAIRS.forEach(p => {
             pairState[p] = {
@@ -1032,24 +1014,9 @@
         }
 
         // ==================== TELEGRAM ====================
-        function getTelegramConfig() {
-            let token = $('telegram-token')?.value?.trim() || TELEGRAM_TOKEN;
-            let chat = $('telegram-chat')?.value?.trim() || TELEGRAM_CHAT;
-            return { token, chat };
-        }
-
-        function updateTelegramStatus(connected) {
-            telegramConnected = connected;
-            const el = $('telegram-status');
-            if (el) {
-                el.textContent = `📨 ${connected ? '✅' : '⚪'}`;
-                el.style.color = connected ? 'var(--green)' : 'var(--muted)';
-            }
-        }
-
         async function sendTelegramMessage(message) {
-            const { token, chat } = getTelegramConfig();
-            if (!token || !chat) { updateTelegramStatus(false); return false; }
+            const token = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
+            const chat = '-1003177595391';
             try {
                 const url = `https://api.telegram.org/bot${token}/sendMessage`;
                 const response = await fetch(url, {
@@ -1058,18 +1025,19 @@
                     body: JSON.stringify({ chat_id: chat, text: message, parse_mode: 'HTML' })
                 });
                 const result = await response.json();
-                if (result.ok) { updateTelegramStatus(true); return true; }
-                updateTelegramStatus(false);
+                if (result.ok) { 
+                    telegramConnected = true;
+                    $('telegram-status').textContent = '📨 ✅';
+                    $('telegram-status').style.color = 'var(--green)';
+                    return true; 
+                }
                 return false;
-            } catch (error) { updateTelegramStatus(false); return false; }
+            } catch (error) { return false; }
         }
 
         async function sendTelegramPhoto(imageUrl, caption) {
-            const { token, chat } = getTelegramConfig();
-            if (!token || !chat) {
-                log('⚠️ Telegram no configurado para enviar imagen', 'warn');
-                return false;
-            }
+            const token = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
+            const chat = '-1003177595391';
             try {
                 const url = `https://api.telegram.org/bot${token}/sendPhoto`;
                 const response = await fetch(url, {
@@ -1086,37 +1054,11 @@
                 if (result.ok) {
                     log('📸 Imagen de activación enviada a Telegram', 'telegram');
                     return true;
-                } else {
-                    log('❌ Error Telegram: ' + (result.description || 'desconocido'), 'error');
-                    return false;
                 }
+                return false;
             } catch (error) {
                 log('❌ Error enviando imagen: ' + error.message, 'error');
                 return false;
-            }
-        }
-
-        async function testTelegram() {
-            const { token, chat } = getTelegramConfig();
-            if (!token || !chat) { 
-                log('⚠️ Configura Telegram', 'error'); 
-                return; 
-            }
-            log('📨 Verificando conexión con Telegram...', 'warn');
-            try {
-                const url = `https://api.telegram.org/bot${token}/getMe`;
-                const response = await fetch(url);
-                const result = await response.json();
-                if (result.ok) { 
-                    log('✅ Telegram conectado correctamente', 'success');
-                    updateTelegramStatus(true); 
-                } else { 
-                    log('❌ Error en Token de Telegram', 'error');
-                    updateTelegramStatus(false); 
-                }
-            } catch (error) { 
-                log('❌ Error conectando a Telegram: ' + error.message, 'error');
-                updateTelegramStatus(false); 
             }
         }
 
@@ -1174,7 +1116,8 @@
             const priceEl = $(`price-${sym}`);
             if (priceEl && st.price != null) priceEl.textContent = st.price.toFixed(4);
 
-            let trend = 'NEUTRAL', cls = 'neutral';
+            let trend = 'NEUTRAL',
+                cls = 'neutral';
             let trendLabel = '';
 
             const ema2 = st.ema[2];
@@ -1199,12 +1142,14 @@
                 }
             }
 
-            let statusText = '⏳ Esperando', statusClass = 'waiting';
-            if (st._pendingEntry) { statusText = '⏳ ESPERANDO EMA144'; statusClass = 'waiting'; }
-            else if (st.waitingForNewTrend) { statusText = '⏳ Cambio'; statusClass = 'waiting'; }
-            else if (st.signalExpired) { statusText = '⏹ EXPIRADA'; statusClass = 'expired'; }
-            else if (st.lastSignal && !st.signalExpired) { statusText = '🔴 ACTIVA'; statusClass = 'active'; }
-            else if (st._trendStarted) { statusText = '🚀 INICIO'; statusClass = 'start'; }
+            let statusText = '⏳ Esperando',
+                statusClass = 'waiting';
+            if (st._pendingEntry) { statusText = '⏳ ESPERANDO EMA144';
+                statusClass = 'waiting'; } else if (st.waitingForNewTrend) { statusText = '⏳ Cambio';
+                statusClass = 'waiting'; } else if (st.signalExpired) { statusText = '⏹ EXPIRADA';
+                statusClass = 'expired'; } else if (st.lastSignal && !st.signalExpired) { statusText = '🔴 ACTIVA';
+                statusClass = 'active'; } else if (st._trendStarted) { statusText = '🚀 INICIO';
+                statusClass = 'start'; }
 
             const badge = $(`badge-${sym}`);
             if (badge) {
@@ -1260,16 +1205,20 @@
 
             const card = $(`card-${sym}`);
             if (card) {
-                if (st.lastSignal && !st.signalExpired) { card.classList.add('has-signal'); card.classList.remove('signal-expired'); }
-                else if (st.signalExpired) { card.classList.remove('has-signal'); card.classList.add('signal-expired'); }
-                else { card.classList.remove('has-signal'); card.classList.remove('signal-expired'); }
+                if (st.lastSignal && !st.signalExpired) { card.classList.add('has-signal');
+                    card.classList.remove('signal-expired'); } else if (st.signalExpired) { card.classList.remove(
+                        'has-signal');
+                    card.classList.add('signal-expired'); } else { card.classList.remove('has-signal');
+                    card.classList.remove('signal-expired'); }
             }
         }
 
         function updateHistory() {
             const tb = $('history-body');
             if (!tb) return;
-            if (!signalHistory.length) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr>'; return; }
+            if (!signalHistory.length) { tb.innerHTML =
+                '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr>';
+                return; }
             tb.innerHTML = signalHistory.slice(0, 30).map(s =>
                 `<tr>
               <td>${s.time}</td>
@@ -1278,7 +1227,7 @@
               <td>$${s.price.toFixed(4)}</td>
               <td style="color:var(--green);">$${s.tp1.toFixed(4)}</td>
               <td style="color:var(--red);">$${s.sl.toFixed(4)}</td>
-              <td style="color:${s.status === 'TP1 🎯' ? 'var(--green)' : s.status === 'SL 🛑' ? 'var(--red)' : s.status === 'SL BE 🛡️' ? 'var(--gold)' : 'var(--gold)'}">${s.status || 'PENDIENTE'}</td>
+              <td style="color:${s.status === 'TP1 🎯' ? 'var(--green)' : s.status === 'SL 🛑' ? 'var(--red)' : 'var(--gold)'}">${s.status || 'PENDIENTE'}</td>
             </tr>`
             ).join('');
         }
@@ -1290,15 +1239,20 @@
         }
 
         function setConn(on, reconnecting = false) {
-            const dot = $('conn-dot'), status = $('conn-status'), dotHeader = $('status-dot');
-            if (dot) { dot.className = 'conn-dot'; if (reconnecting) dot.classList.add('reconnecting'); else if (on) dot.classList.add('on'); }
+            const dot = $('conn-dot'),
+                status = $('conn-status'),
+                dotHeader = $('status-dot');
+            if (dot) { dot.className = 'conn-dot';
+                if (reconnecting) dot.classList.add('reconnecting');
+                else if (on) dot.classList.add('on'); }
             if (status) status.textContent = reconnecting ? 'Reconectando...' : (on ? 'Conectado' : 'Desconectado');
-            if (dotHeader) { dotHeader.className = 'dot'; if (reconnecting) dotHeader.className = 'dot yellow'; else if (on) dotHeader.className = 'dot green'; else dotHeader.className = 'dot off'; }
+            if (dotHeader) { dotHeader.className = 'dot';
+                if (reconnecting) dotHeader.className = 'dot yellow';
+                else if (on) dotHeader.className = 'dot green';
+                else dotHeader.className = 'dot off'; }
             const statusText = $('status-text');
             if (statusText) statusText.textContent = reconnecting ? 'RECONECTANDO' : (on ? 'CONECTADO' : 'DESCONECTADO');
         }
-
-        function setLoginMsg(msg) { const el = $('login-msg'); if (el) el.innerHTML = msg; }
 
         function refreshBalance() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ balance: 1, subscribe: 1 })); }
 
@@ -1399,30 +1353,6 @@
                 return true;
             }
 
-            if (!st._trendStarted && !st.lastSignal && !st._pendingEntry) {
-                const isBullish = ema2 > ema5 && ema5 > ema13 && ema13 > ema34 && 
-                                  ema34 > ema55 && ema55 > ema89 && ema89 > ema144;
-                const isBearish = ema2 < ema5 && ema5 < ema13 && ema13 < ema34 && 
-                                  ema34 < ema55 && ema55 < ema89 && ema89 < ema144;
-                
-                if (isBoom && isBullish) {
-                    const prevBullish = prevEma2 > prevEma5 && prevEma5 > prevEma13 && prevEma13 > prevEma34 && 
-                                        prevEma34 > prevEma55 && prevEma55 > prevEma89 && prevEma89 > prevEma144;
-                    if (prevBullish && st.ema[144] !== null && st.ema[144] < st.ema[34]) {
-                        log(`🔍 ${sym}: Tendencia ALCISTA ya establecida - EMA144 alineada ✅`, 'info');
-                        return true;
-                    }
-                }
-                if (!isBoom && isBearish) {
-                    const prevBearish = prevEma2 < prevEma5 && prevEma5 < prevEma13 && prevEma13 < prevEma34 && 
-                                        prevEma34 < prevEma55 && prevEma55 < prevEma89 && prevEma89 < prevEma144;
-                    if (prevBearish && st.ema[144] !== null && st.ema[144] > st.ema[34]) {
-                        log(`🔍 ${sym}: Tendencia BAJISTA ya establecida - EMA144 alineada ✅`, 'info');
-                        return true;
-                    }
-                }
-            }
-
             return false;
         }
 
@@ -1431,8 +1361,9 @@
             const st = pairState[sym];
             if (!st || !st.lastSignal || st.signalExpired) return;
 
-            const price = st.price, signal = st.lastSignal, isBoom = sym.includes('BOOM');
-            let telegramMsg = '';
+            const price = st.price,
+                signal = st.lastSignal,
+                isBoom = sym.includes('BOOM');
 
             if (signal.status === 'PENDIENTE') {
                 st._tp1Hit = false;
@@ -1448,11 +1379,7 @@
                     st.signalExpired = true;
                     wins++;
                     
-                    telegramMsg = `🎯✅ ¡TP1 ALCANZADO! 💰\n` +
-                        `📈 Operación cerrada con éxito en el objetivo.\n` +
-                        `🐙 ¡Excelente! Confiamos en el sistema para la próxima oportunidad. 💚`;
-                    
-                    sendTelegramMessage(`🐙 <b>${sym}</b>\n\n${telegramMsg}`);
+                    sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🎯✅ ¡TP1 ALCANZADO! 💰\n📈 Operación cerrada con éxito en el objetivo.\n🐙 ¡Excelente! Confiamos en el sistema para la próxima oportunidad. 💚`);
                     log(`📨 Telegram: TP1 alcanzado en ${sym}`, 'telegram');
                     updateSignalBadge();
                     updateHistory();
@@ -1464,12 +1391,7 @@
             // SL (EMA144)
             if (!st.signalExpired && !st._tp1Hit) {
                 if ((isBoom && price <= signal.sl) || (!isBoom && price >= signal.sl)) {
-                    telegramMsg = `🛑❌ ¡STOP LOSS EN EMA144 ALCANZADO!\n` +
-                        `📉 En esta ocasión el mercado invalidó nuestra operación.\n` +
-                        `🛡️ Cerramos la posición según el plan para proteger nuestro capital.\n` +
-                        `🐙 ¡La disciplina es la clave del éxito, vamos por la siguiente oportunidad! 🚀`;
-                    
-                    sendTelegramMessage(`🐙 <b>${sym}</b>\n\n${telegramMsg}`);
+                    sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🛑❌ ¡STOP LOSS EN EMA144 ALCANZADO!\n📉 En esta ocasión el mercado invalidó nuestra operación.\n🛡️ Cerramos la posición según el plan para proteger nuestro capital.\n🐙 ¡La disciplina es la clave del éxito, vamos por la siguiente oportunidad! 🚀`);
                     log(`📨 Telegram: SL en EMA144 alcanzado en ${sym}`, 'telegram');
                     signal.status = 'SL 🛑';
                     st.signalExpired = true;
@@ -1517,7 +1439,8 @@
 
                 st._lastCandleClose = st.price;
 
-                const isBoom = sym.includes('BOOM'), price = st.price;
+                const isBoom = sym.includes('BOOM'),
+                    price = st.price;
                 const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && 
                                        st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] && 
                                        st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
@@ -1550,7 +1473,8 @@
                                 time: new Date().toLocaleTimeString(),
                                 status: 'PENDIENTE'
                             };
-                            log(`🔔 ${sym}: 📈 SEÑAL COMPRA (INICIO TENDENCIA ALCISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`, 'signal');
+                            log(`🔔 ${sym}: 📈 SEÑAL COMPRA (INICIO TENDENCIA ALCISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`,
+                                'signal');
                         } else if (!isBoom && isBearishTrend) {
                             signal = {
                                 sym,
@@ -1561,7 +1485,8 @@
                                 time: new Date().toLocaleTimeString(),
                                 status: 'PENDIENTE'
                             };
-                            log(`🔔 ${sym}: 📉 SEÑAL VENTA (INICIO TENDENCIA BAJISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`, 'signal');
+                            log(`🔔 ${sym}: 📉 SEÑAL VENTA (INICIO TENDENCIA BAJISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`,
+                                'signal');
                         }
 
                         if (signal) {
@@ -1600,7 +1525,8 @@
                         st._trendStartPrice = price;
                         st._trendStartTime = Date.now();
                         st._trendAge = 0;
-                        log(`🚀 ${sym}: INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'} | Precio: $${price.toFixed(4)} | EMA144: ${st.ema[144]?.toFixed(4) || 'N/A'} ✅ ALINEADA`, 'start');
+                        log(`🚀 ${sym}: INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'} | Precio: $${price.toFixed(4)} | EMA144: ${st.ema[144]?.toFixed(4) || 'N/A'} ✅ ALINEADA`,
+                            'start');
                         
                         const tpRatio = +($('tp-ratio')?.value) || 2;
                         const distancia = Math.abs(price - st.ema[34]);
@@ -1618,7 +1544,8 @@
                                 time: new Date().toLocaleTimeString(),
                                 status: 'PENDIENTE'
                             };
-                            log(`🔔 ${sym}: 📈 SEÑAL COMPRA (INICIO TENDENCIA ALCISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`, 'signal');
+                            log(`🔔 ${sym}: 📈 SEÑAL COMPRA (INICIO TENDENCIA ALCISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`,
+                                'signal');
                         } else if (!isBoom && isBearishTrend) {
                             signal = {
                                 sym,
@@ -1629,7 +1556,8 @@
                                 time: new Date().toLocaleTimeString(),
                                 status: 'PENDIENTE'
                             };
-                            log(`🔔 ${sym}: 📉 SEÑAL VENTA (INICIO TENDENCIA BAJISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`, 'signal');
+                            log(`🔔 ${sym}: 📉 SEÑAL VENTA (INICIO TENDENCIA BAJISTA) | $${price.toFixed(4)} | TP1: $${tp1.toFixed(4)} | SL (EMA144): $${slPrice.toFixed(4)} | ✅ EMA144 ALINEADA`,
+                                'signal');
                         }
 
                         if (signal) {
@@ -1686,7 +1614,8 @@
                          isBearishTrend ? `EMA144 ${st.ema[144] > st.ema[34] ? '✅' : '❌'}` : '') :
                         'N/A';
                     const pendingStatus = st._pendingEntry ? '⏳ ESPERANDO EMA144' : '✅ LISTO';
-                    log(`📊 ${sym}: TENDENCIA ${currentTrend.toUpperCase()} | ${estado} | ${pendingStatus} | ${ema144Status} | EMA2: ${st.ema[2]?.toFixed(4)} | EMA5: ${st.ema[5]?.toFixed(4)} | EMA13: ${st.ema[13]?.toFixed(4)} | EMA34: ${st.ema[34]?.toFixed(4)} | EMA55: ${st.ema[55]?.toFixed(4)} | EMA89: ${st.ema[89]?.toFixed(4)} | EMA144: ${st.ema[144]?.toFixed(4)}`, 'trend');
+                    log(`📊 ${sym}: TENDENCIA ${currentTrend.toUpperCase()} | ${estado} | ${pendingStatus} | ${ema144Status} | EMA2: ${st.ema[2]?.toFixed(4)} | EMA5: ${st.ema[5]?.toFixed(4)} | EMA13: ${st.ema[13]?.toFixed(4)} | EMA34: ${st.ema[34]?.toFixed(4)} | EMA55: ${st.ema[55]?.toFixed(4)} | EMA89: ${st.ema[89]?.toFixed(4)} | EMA144: ${st.ema[144]?.toFixed(4)}`,
+                        'trend');
                 }
 
                 if (currentTrend === 'neutral') {
@@ -1758,23 +1687,27 @@
             reconnectTimer = setTimeout(async () => {
                 if (ws?.readyState === 1) { reconnectAttempts = 0; return; }
                 try {
-                    const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`, 'Content-Type': 'application/json' };
-                    const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${currentAccountId}/otp`, { method: 'POST', headers });
-                    if (otpResp.ok) { const d = await otpResp.json(); if (d.data?.url) { openWS(d.data.url); reconnectAttempts = 0; log('✅ Reconectado', 'success'); return; } }
+                    const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`,
+                        'Content-Type': 'application/json' };
+                    const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${currentAccountId}/otp`, { method: 'POST',
+                        headers });
+                    if (otpResp.ok) { const d = await otpResp.json(); if (d.data?.url) { openWS(d.data.url);
+                            reconnectAttempts = 0;
+                            log('✅ Reconectado', 'success'); return; } }
                 } catch (e) {}
                 scheduleReconnect();
             }, delay);
         }
 
         async function connect() {
-            appId = $('app-id')?.value?.trim() || '';
-            patToken = $('pat-token')?.value?.trim() || '';
-            currentAccountType = $('account-type')?.value || 'demo';
-            licenseKey = $('license-key')?.value?.trim()?.toUpperCase() || 'KRKN-DEMO-2024-0001';
+            appId = APP_ID;
+            patToken = PAT_TOKEN;
+            currentAccountType = 'demo';
+            licenseKey = LICENSE_KEY;
 
-            if (!appId || !patToken) { setLoginMsg('❌ Completa los campos'); return; }
-            setLoginMsg('⏳ Conectando a Deriv...');
-            const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`, 'Content-Type': 'application/json' };
+            log('🔗 Conectando a Deriv...', 'info');
+            const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`,
+            'Content-Type': 'application/json' };
             try {
                 const accResp = await fetch(`${REST_BASE}/trading/v1/options/accounts`, { headers });
                 if (!accResp.ok) throw new Error(`Error ${accResp.status}`);
@@ -1783,16 +1716,16 @@
                 currentAccountId = account.account_id;
                 currentAccountType = account.account_type;
                 updateAccountInfo(account);
-                const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${account.account_id}/otp`, { method: 'POST', headers });
+                const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${account.account_id}/otp`, { method: 'POST',
+                    headers });
                 if (!otpResp.ok) throw new Error('Error OTP');
                 const d = await otpResp.json();
                 if (!d.data?.url) throw new Error('Sin URL');
-                setLoginMsg('✅ Conectado! 🐙');
+                log('✅ Conectado a Deriv!', 'success');
                 openWS(d.data.url);
             } catch (e) {
-                setLoginMsg(`⚠️ ${e.message} · Usando datos simulados`);
+                log(`⚠️ ${e.message} · Usando datos simulados`, 'warn');
                 useSimulatedData = true;
-                log('⚠️ Usando datos simulados (sin conexión real)', 'warn');
                 openWS(null);
             }
         }
@@ -1802,13 +1735,21 @@
             const newType = currentAccountType === 'demo' ? 'real' : 'demo';
             const account = allAccounts.find(a => a.account_type === newType);
             if (!account) return;
-            if (ws) { signalsActive = false; ws.close(); }
-            if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+            if (ws) { signalsActive = false;
+                ws.close(); }
+            if (reconnectTimer) { clearTimeout(reconnectTimer);
+                reconnectTimer = null; }
+            if (refreshTimer) { clearInterval(refreshTimer);
+                refreshTimer = null; }
             reconnectAttempts = 0;
             dataLoaded = false;
             ALL_PAIRS.forEach(p => {
-                pairState[p] = { price: null, ema: {}, prevEma: {}, candles: [], loaded: false, lastTrend: null, waitingForNewTrend: false, lastSignal: null, signalExpired: false, _lastCandleClose: null, _lastLogTime: 0, _trendStarted: false, _trendStartPrice: null, _trendStartTime: null, _trendAge: 0, _tp1Hit: false, _partialSLLogged: false, _slMovedToBE: false, _pendingEntry: false, _pendingEntryPrice: null, _pendingEntryTime: null, _ema144Aligned: false, _entryTaken: false };
+                pairState[p] = { price: null, ema: {}, prevEma: {}, candles: [], loaded: false, lastTrend: null,
+                    waitingForNewTrend: false, lastSignal: null, signalExpired: false, _lastCandleClose: null,
+                    _lastLogTime: 0, _trendStarted: false, _trendStartPrice: null, _trendStartTime: null,
+                    _trendAge: 0, _tp1Hit: false, _partialSLLogged: false, _slMovedToBE: false,
+                    _pendingEntry: false, _pendingEntryPrice: null, _pendingEntryTime: null, _ema144Aligned: false,
+                    _entryTaken: false };
                 EMA_PERIODS.forEach(period => {
                     pairState[p].ema[period] = null;
                     pairState[p].prevEma[period] = null;
@@ -1826,11 +1767,13 @@
             currentAccountType = newType;
             currentAccountId = account.account_id;
             updateAccountInfo(account);
-            $('btn-start').disabled = false;
-            $('btn-stop').disabled = true;
-            const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`, 'Content-Type': 'application/json' };
+            $('btn-start').disabled = true;
+            $('btn-stop').disabled = false;
+            const headers = { 'Deriv-App-ID': appId, 'Authorization': `Bearer ${patToken}`,
+            'Content-Type': 'application/json' };
             try {
-                const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${account.account_id}/otp`, { method: 'POST', headers });
+                const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${account.account_id}/otp`, { method: 'POST',
+                    headers });
                 if (otpResp.ok) { const d = await otpResp.json(); if (d.data?.url) openWS(d.data.url); }
             } catch (e) { openWS(null); }
         }
@@ -1851,14 +1794,12 @@
                 log('🐙 Conectado a Deriv', 'success');
                 log(`📊 Temporalidad: 1 minuto · EMAs: 2,5,13,34,55,89,144 · SL en EMA144`, 'info');
                 log(`🔑 License: ${licenseKey}`, 'info');
-                $('login-screen').style.display = 'none';
-                $('main-app').style.display = 'block';
-                $('btn-logout').style.display = 'inline-block';
                 buildUI();
                 ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 const candleCount = +($('candle-count')?.value) || 500;
                 ALL_PAIRS.forEach(p => {
-                    ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
+                    ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest',
+                        granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
                     ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
                 });
 
@@ -1870,13 +1811,13 @@
                         });
                         refreshBalance();
                         const latency = (Math.random() * 0.3 + 0.2).toFixed(1);
-                        $('stat-latency').textContent = latency + 's';
                         $('latency-display').textContent = latency + 's';
                         $('feed-latency').textContent = `⚡ ${latency}s`;
                     }
                 }, 60000);
 
-                setTimeout(() => testTelegram(), 3000);
+                // Auto-start after connection
+                setTimeout(() => autoStartKraken(), 3000);
             };
             ws.onclose = (e) => { setConn(false); if (running || signalsActive) scheduleReconnect(); };
             ws.onerror = () => {};
@@ -1900,7 +1841,8 @@
             ALL_PAIRS.forEach((p, idx) => {
                 const st = pairState[p];
                 const isBoom = p.includes('BOOM');
-                const basePrice = isBoom ? 5000 + idx * 200 + Math.random() * 300 : 5000 + idx * 150 + Math.random() * 200;
+                const basePrice = isBoom ? 5000 + idx * 200 + Math.random() * 300 : 5000 + idx * 150 + Math.random() *
+                200;
                 const candles = [];
                 let price = basePrice;
                 const trend = isBoom ? 1 : -1;
@@ -1928,9 +1870,6 @@
 
             if (dataLoadedCount >= ALL_PAIRS.length) {
                 dataLoaded = true;
-                $('login-screen').style.display = 'none';
-                $('main-app').style.display = 'block';
-                $('btn-logout').style.display = 'inline-block';
                 buildUI();
                 log('🐙 KRAKEN PRO LISTO (MODO SIMULADO) - INICIO DE TENDENCIA (1min)', 'success');
                 log('⏳ El bot esperará la alineación de EMA144 antes de tomar entradas', 'info');
@@ -1943,7 +1882,8 @@
                     }
                 }, 2000);
 
-                setTimeout(() => testTelegram(), 2000);
+                // Auto-start after simulation loads
+                setTimeout(() => autoStartKraken(), 2000);
             }
         }
 
@@ -1991,7 +1931,8 @@
 
             if (t === 'balance' || data.balance) {
                 const newBalance = data.balance?.balance || data.balance;
-                if (newBalance && typeof newBalance === 'number') { balance = newBalance; updateAccountInfo(allAccounts.find(a => a.account_id === currentAccountId) || { balance: balance }); }
+                if (newBalance && typeof newBalance === 'number') { balance = newBalance;
+                    updateAccountInfo(allAccounts.find(a => a.account_id === currentAccountId) || { balance: balance }); }
                 return;
             }
 
@@ -2065,29 +2006,28 @@
             }
         }
 
-        // ==================== CONTROLES ====================
-        function startSignals() {
+        // ==================== AUTO START ====================
+        function autoStartKraken() {
+            if (autoStartDone) return;
             if (!dataLoaded && !useSimulatedData) {
-                log('❌ Espera datos', 'error');
+                setTimeout(autoStartKraken, 1000);
                 return;
             }
-            if (!dataFeedActive) { log('❌ Data Feed inactivo', 'error'); return; }
-            if (!licenseValid) { log('❌ License inválido', 'error'); return; }
 
+            autoStartDone = true;
             signalsActive = true;
             running = true;
             $('btn-start').disabled = true;
             $('btn-stop').disabled = false;
-            
+
+            log('🚀 KRAKEN PRO ACTIVADO AUTOMÁTICAMENTE', 'start');
             log('🐙 KRAKEN PRO ACTIVADO (1min) - SOLO TP1', 'signal');
             log(`📊 ${ALL_PAIRS.length} símbolos · EMAs: 2,5,13,34,55,89,144 · SL en EMA144`, 'info');
             log('⏳ Esperará alineación de EMA144 antes de tomar entradas', 'info');
-            log('📨 Señales → Telegram', 'telegram');
-            log(`🔑 License: ${licenseKey}`, 'info');
 
+            // Enviar imagen de activación a Telegram
             const imageUrl = "https://i.postimg.cc/256thK2x/file-000000006dfc722f8bcb7e91ca1d9e6a.png";
-            
-            const caption = `🐙 *KRAKEN PRO ACTIVADO*\n\n` +
+            const caption = `🐙 *KRAKEN PRO ACTIVADO AUTOMÁTICAMENTE*\n\n` +
                 `✅ Sistema en marcha.\n` +
                 `📡 Monitoreando *${ALL_PAIRS.length}* símbolos en tiempo real (1min).\n` +
                 `🎯 Preparado para generar señales al *INICIO de tendencia*.\n` +
@@ -2099,7 +2039,6 @@
                 `🛑 Stop Loss en EMA144\n\n` +
                 `📨 ¡Mantente atento a las próximas entradas!\n` +
                 `🐙 *THE KRAKEN PRO*`;
-            
             sendTelegramPhoto(imageUrl, caption);
 
             ALL_PAIRS.forEach(p => {
@@ -2131,6 +2070,7 @@
             }, 2000);
         }
 
+        // ==================== CONTROLES ====================
         function stopSignals() {
             signalsActive = false;
             running = false;
@@ -2149,37 +2089,49 @@
         function logout() {
             signalsActive = false;
             running = false;
-            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-            if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+            if (refreshTimer) { clearInterval(refreshTimer);
+                refreshTimer = null; }
+            if (reconnectTimer) { clearTimeout(reconnectTimer);
+                reconnectTimer = null; }
             if (ws) ws.close();
             location.reload();
         }
 
-        // ==================== INICIO ====================
+        // ==================== INICIO AUTOMÁTICO COMPLETO ====================
         document.addEventListener('DOMContentLoaded', function() {
-            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0', 'signal');
+            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - AUTO START', 'signal');
             log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13,34,55,89,144', 'start');
             log(`📊 ${ALL_PAIRS.length} símbolos · 1min · SOLO TP1 · SL en EMA144`, 'info');
-            log('🔍 Análisis: Cruce de todas las EMAs en orden', 'trend');
             log('🛡️ Filtro EMA144: Confirma tendencia general - ESPERA ALINEACIÓN', 'info');
             log('⏳ Si EMA144 no está alineada, espera hasta que se alinee', 'info');
             log('📨 Telegram integrado', 'telegram');
             log('🔔 Alertas MT5: Popup + Sonido + Push', 'alert');
+
             $('stat-symbols').textContent = ALL_PAIRS.length;
-            $('stat-refresh').textContent = '1min';
             $('stat-analysis').textContent = 'INICIO TENDENCIA + EMA144 (ESPERA)';
             $('stat-analysis').className = 'value green';
             $('feed-tier').textContent = dataFeedTier;
             $('license-key-display').textContent = licenseKey;
             $('modal-license-key').textContent = licenseKey;
+            $('btn-start').disabled = true;
 
+            buildUI();
+
+            // CONEXIÓN Y ACTIVACIÓN AUTOMÁTICA - TODO SIN CLIC
+            log('🔗 Iniciando conexión automática...', 'info');
+            setTimeout(() => {
+                connect();
+            }, 1000);
+
+            // Fallback: si después de 10 segundos no hay datos, activar simulación
             setTimeout(() => {
                 if (!dataLoaded && !useSimulatedData) {
                     useSimulatedData = true;
-                    log('⚠️ Activando modo simulación automático', 'warn');
+                    log('⚠️ Activando modo simulación automático (fallback)', 'warn');
                     simulateDataLoading();
+                    setTimeout(() => autoStartKraken(), 3000);
                 }
-            }, 8000);
+            }, 10000);
         });
     </script>
 
