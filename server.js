@@ -1,25 +1,20 @@
 const express = require('express');
+const WebSocket = require('ws'); // <-- ESTO ES CLAVE
 const app = express();
 const path = require('path');
 
-// ============================================================
-// 🐙 KRAKEN PRO - BACKEND (Se ejecuta sin abrir la URL)
-// ============================================================
-
 console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - BACKEND MODE');
 console.log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13,34,55,89,144');
-console.log('🔄 Iniciando bot en modo servidor (sin navegador)...');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
-const TIMEFRAME = 60; // 1 minuto
+const TIMEFRAME = 60;
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
-const LICENSE_KEY = 'KRKN-DEMO-2024-0001';
 
 // Telegram
 const TELEGRAM_TOKEN = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
@@ -84,34 +79,10 @@ async function sendTelegramMessage(message) {
             console.log('📨 Mensaje enviado a Telegram');
             return true;
         }
+        console.log('❌ Error Telegram:', result);
         return false;
     } catch (error) {
         console.log('❌ Error Telegram:', error.message);
-        return false;
-    }
-}
-
-async function sendTelegramPhoto(imageUrl, caption) {
-    try {
-        const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`;
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: TELEGRAM_CHAT,
-                photo: imageUrl,
-                caption: caption,
-                parse_mode: 'Markdown'
-            })
-        });
-        const result = await response.json();
-        if (result.ok) {
-            console.log('📸 Imagen enviada a Telegram');
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.log('❌ Error imagen:', error.message);
         return false;
     }
 }
@@ -376,7 +347,7 @@ function handleMsg(data) {
 function openWS(url) {
     if (ws) try { ws.close(); } catch (e) {}
 
-    ws = new WebSocket(url);
+    ws = new WebSocket(url); // <-- AHORA USA ws
     ws.onopen = () => {
         console.log('✅ Conectado a Deriv WebSocket');
         const candleCount = 500;
@@ -384,7 +355,6 @@ function openWS(url) {
             ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
         });
-        // Activar señales después de cargar datos
         setTimeout(() => {
             signalsActive = true;
             running = true;
@@ -436,7 +406,7 @@ async function connectDeriv() {
 console.log('🔄 Iniciando KRAKEN PRO en modo servidor...');
 connectDeriv();
 
-// ==================== SERVIDOR WEB (para mantener activo) ====================
+// ==================== SERVIDOR WEB ====================
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
@@ -461,7 +431,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔗 https://kraken-pro-bot-production.up.railway.app`);
 });
 
-// Auto-ping cada 5 minutos para mantener activo
-setInterval(() => {
-    console.log(`[${new Date().toISOString()}] ✅ Keep Alive - Señales: ${totalSignals}`);
-}, 5 * 60 * 1000);
+console.log('⏰ Bot iniciado automáticamente - Esperando señales...');
