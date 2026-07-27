@@ -1,7 +1,6 @@
 const express = require('express');
-const WebSocket = require('ws'); // <-- ESTO ES CLAVE
+const WebSocket = require('ws');
 const app = express();
-const path = require('path');
 
 console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - BACKEND MODE');
 console.log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13,34,55,89,144');
@@ -35,6 +34,7 @@ let candleCloseProcessed = {};
 let dataLoaded = false;
 let analysisQueue = [];
 let isProcessingQueue = false;
+let lastSignalTime = {};
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -63,6 +63,7 @@ ALL_PAIRS.forEach(p => {
     });
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
+    lastSignalTime[p] = 0;
 });
 
 // ==================== TELEGRAM ====================
@@ -79,7 +80,6 @@ async function sendTelegramMessage(message) {
             console.log('📨 Mensaje enviado a Telegram');
             return true;
         }
-        console.log('❌ Error Telegram:', result);
         return false;
     } catch (error) {
         console.log('❌ Error Telegram:', error.message);
@@ -129,27 +129,39 @@ function detectTrendStart(sym) {
         st.ema[34] === null || st.ema[55] === null || st.ema[89] === null || st.ema[144] === null) return false;
 
     const isBoom = sym.includes('BOOM');
-    const ema2 = st.ema[2], ema5 = st.ema[5], ema13 = st.ema[13], ema34 = st.ema[34];
-    const ema55 = st.ema[55], ema89 = st.ema[89], ema144 = st.ema[144];
+    
+    // Verificar alineación de todas las EMAs
+    const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] &&
+                      st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] &&
+                      st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
+                      
+    const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] &&
+                      st.ema[13] < st.ema[34] && st.ema[34] < st.ema[55] &&
+                      st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
 
-    const prevEma2 = st.prevEma[2], prevEma5 = st.prevEma[5], prevEma13 = st.prevEma[13];
-    const prevEma34 = st.prevEma[34], prevEma55 = st.prevEma[55];
-    const prevEma89 = st.prevEma[89], prevEma144 = st.prevEma[144];
+    // Si no hay tendencia clara, no hay entrada
+    if (!isBullish && !isBearish) {
+        st._pendingEntry = false;
+        return false;
+    }
 
-    if (prevEma2 === null || prevEma5 === null || prevEma13 === null || prevEma34 === null ||
-        prevEma55 === null || prevEma89 === null || prevEma144 === null) return false;
+    // Verificar EMA144 alineada
+    const ema144Aligned = isEMA144Aligned(sym);
+    if (!ema144Aligned) {
+        st._pendingEntry = true;
+        console.log(`⏳ ${sym}: TENDENCIA ${isBullish ? 'ALCISTA' : 'BAJISTA'} - ESPERANDO EMA144`);
+        return false;
+    }
 
-    const ema2CrossedAbove5 = (prevEma2 <= prevEma5) && (ema2 > ema5);
-    const ema5CrossedAbove13 = (prevEma5 <= prevEma13) && (ema5 > ema13);
-    const ema13CrossedAbove34 = (prevEma13 <= prevEma34) && (ema13 > ema34);
-    const ema34CrossedAbove55 = (prevEma34 <= prevEma55) && (ema34 > ema55);
-    const ema55CrossedAbove89 = (prevEma55 <= prevEma89) && (ema55 > ema89);
-    const ema89CrossedAbove144 = (prevEma89 <= prevEma144) && (ema89 > ema144);
+    // Si ya hay señal activa, no tomar nueva
+    if (st.lastSignal && !st.signalExpired) {
+        return false;
+    }
 
-    if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13 && ema13CrossedAbove34 &&
-        ema34CrossedAbove55 && ema55CrossedAbove89 && ema89CrossedAbove144) return true;
-
-    return false;
+    // ✅ TODAS LAS CONDICIONES CUMPLIDAS
+    console.log(`🚀 ${sym}: ENTRADA CONFIRMADA | Tendencia ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅`);
+    st._pendingEntry = false;
+    return true;
 }
 
 // ==================== GENERAR SEÑAL ====================
@@ -198,6 +210,7 @@ function generateSignal(sym) {
     st._trendStarted = true;
     st._tp1Hit = false;
     totalSignals++;
+    lastSignalTime[sym] = Date.now();
 
     console.log(`🔔 ${sym}: 📈 SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entrada: $${price} | TP1: $${tp1} | SL (EMA144): $${slPrice}`);
 
@@ -230,10 +243,16 @@ function analyzeTrendStart(sym) {
         }
 
         const trendStarted = detectTrendStart(sym);
+        
+        // Si hay tendencia y no hay señal activa, tomar entrada
         if (trendStarted && !st.lastSignal) {
             generateSignal(sym);
+            isProcessingQueue = false;
+            processNextInQueue();
+            return;
         }
 
+        // Verificar expiración de señal existente
         if (st.lastSignal && !st.signalExpired) {
             checkSignalExpiry(sym);
         }
@@ -347,7 +366,7 @@ function handleMsg(data) {
 function openWS(url) {
     if (ws) try { ws.close(); } catch (e) {}
 
-    ws = new WebSocket(url); // <-- AHORA USA ws
+    ws = new WebSocket(url);
     ws.onopen = () => {
         console.log('✅ Conectado a Deriv WebSocket');
         const candleCount = 500;
@@ -417,6 +436,7 @@ app.get('/', (req, res) => {
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
         <p style="color:#10b981;">🚀 Funcionando automáticamente</p>
+        <p style="color:#f59e0b;font-size:0.8rem;">🔄 Esperando condiciones de mercado...</p>
         </body></html>
     `);
 });
