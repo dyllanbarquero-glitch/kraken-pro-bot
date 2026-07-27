@@ -1,0 +1,15 @@
+{
+  "name": "kraken-pro",
+  "version": "5.0.0",
+  "description": "🐙 KRAKEN PRO - Deriv Edition",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
