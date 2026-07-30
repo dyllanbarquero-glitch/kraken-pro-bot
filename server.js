@@ -58,7 +58,6 @@ ALL_PAIRS.forEach(p => {
         _pendingEntry: false,
         _ema144Aligned: false,
         _entryTaken: false,
-        // Order Blocks
         orderBlocks: [],
         _lastOBHigh: null,
         _lastOBLow: null,
@@ -77,7 +76,7 @@ ALL_PAIRS.forEach(p => {
 function resetPairState(sym) {
     const st = pairState[sym];
     if (!st) return;
-    console.log(`🔄 ${sym}: Reiniciando estado para nuevas entradas...`);
+    console.log(`🔄 ${sym}: Reiniciando estado...`);
     st.lastSignal = null;
     st.signalExpired = false;
     st._trendStarted = false;
@@ -86,16 +85,13 @@ function resetPairState(sym) {
     st._tp1Hit = false;
     st._partialSLLogged = false;
     st._pendingEntry = false;
-    st._pendingEntryPrice = null;
-    st._pendingEntryTime = null;
     st._ema144Aligned = false;
     st._entryTaken = false;
     st.waitingForNewTrend = false;
     st.lastTrend = null;
-    console.log(`✅ ${sym}: Estado reiniciado - Listo para nueva entrada`);
 }
 
-// ==================== TELEGRAM ====================
+// ==================== TELEGRAM (VERSIÓN QUE FUNCIONABA) ====================
 async function sendTelegramMessage(message) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -109,6 +105,7 @@ async function sendTelegramMessage(message) {
             console.log('📨 Mensaje enviado a Telegram');
             return true;
         }
+        console.log('❌ Error Telegram:', result.description || 'Error desconocido');
         return false;
     } catch (error) {
         console.log('❌ Error Telegram:', error.message);
@@ -160,7 +157,6 @@ function detectOrderBlocks(sym) {
         const lowerShadow = Math.min(open, close) - low;
         const bodyRatio = body / (high - low + 0.0001);
         
-        // OB Bajista (rechazo en la parte superior)
         if (upperShadow > body * 1.5 && bodyRatio > 0.3 && upperShadow > lowerShadow * 1.2) {
             const rejectionZone = Math.max(open, close) + upperShadow * 0.3;
             newBlocks.push({
@@ -172,7 +168,6 @@ function detectOrderBlocks(sym) {
             });
         }
         
-        // OB Alcista (rechazo en la parte inferior)
         if (lowerShadow > body * 1.5 && bodyRatio > 0.3 && lowerShadow > upperShadow * 1.2) {
             const rejectionZone = Math.min(open, close) - lowerShadow * 0.3;
             newBlocks.push({
@@ -203,7 +198,6 @@ function detectOrderBlocks(sym) {
             st._lastOBHigh = lastOB.high;
             st._lastOBLow = lastOB.low;
             st._obValid = true;
-            console.log(`🧱 ${sym}: OB ${lastOB.type.toUpperCase()} detectado ${lastOB.high.toFixed(4)} - ${lastOB.low.toFixed(4)}`);
         }
     }
 }
@@ -226,10 +220,7 @@ function isEMA144Aligned(sym) {
 
 function isOrderBlockValid(sym, direction) {
     const st = pairState[sym];
-    if (!st || !st.orderBlocks || st.orderBlocks.length === 0) {
-        console.log(`⏳ ${sym}: SIN ORDER BLOCKS - Esperando formación`);
-        return false;
-    }
+    if (!st || !st.orderBlocks || st.orderBlocks.length === 0) return false;
     
     const price = st.price;
     const isBuy = direction === 'MULTUP';
@@ -237,29 +228,24 @@ function isOrderBlockValid(sym, direction) {
     for (let ob of st.orderBlocks) {
         if (isBuy && ob.type === 'bullish') {
             if (price >= ob.low && price <= ob.high * 1.01) {
-                console.log(`✅ ${sym}: OB ALCISTA confirmado para COMPRA`);
                 return true;
             }
         }
         if (!isBuy && ob.type === 'bearish') {
             if (price <= ob.high && price >= ob.low * 0.99) {
-                console.log(`✅ ${sym}: OB BAJISTA confirmado para VENTA`);
                 return true;
             }
         }
     }
     
-    // Si hay OB reciente y el precio está cerca
     if (st.orderBlocks.length > 0) {
         const lastOB = st.orderBlocks[0];
         const distance = Math.abs(price - lastOB.price) / price;
         if (distance < 0.005) {
-            console.log(`✅ ${sym}: OB cercano confirmado (${(distance * 100).toFixed(2)}%)`);
             return true;
         }
     }
     
-    console.log(`❌ ${sym}: SIN OB confirmado para ${isBuy ? 'COMPRA' : 'VENTA'}`);
     return false;
 }
 
@@ -287,16 +273,13 @@ function detectTrendStart(sym) {
     const ema144Aligned = isEMA144Aligned(sym);
     if (!ema144Aligned) {
         st._pendingEntry = true;
-        console.log(`⏳ ${sym}: TENDENCIA ${isBullish ? 'ALCISTA' : 'BAJISTA'} - ESPERANDO EMA144`);
         return false;
     }
 
-    // Verificar OB antes de confirmar entrada
     const direction = isBullish ? 'MULTUP' : 'MULTDOWN';
     const obValid = isOrderBlockValid(sym, direction);
     if (!obValid) {
         st._pendingEntry = true;
-        console.log(`⏳ ${sym}: TENDENCIA ${isBullish ? 'ALCISTA' : 'BAJISTA'} - ESPERANDO ORDER BLOCK`);
         return false;
     }
 
@@ -304,7 +287,6 @@ function detectTrendStart(sym) {
         return false;
     }
 
-    console.log(`🚀 ${sym}: ENTRADA CONFIRMADA | ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅ | OB ✅`);
     st._pendingEntry = false;
     return true;
 }
@@ -325,11 +307,10 @@ function generateSignal(sym) {
 
     if (!isBullishTrend && !isBearishTrend) return;
 
-    // Verificar OB nuevamente antes de generar
     const direction = isBullishTrend ? 'MULTUP' : 'MULTDOWN';
     const obValid = isOrderBlockValid(sym, direction);
     if (!obValid) {
-        console.log(`⏳ ${sym}: OB no confirmado - No se genera señal`);
+        console.log(`⏳ ${sym}: OB no confirmado`);
         return;
     }
 
@@ -356,12 +337,13 @@ function generateSignal(sym) {
     totalSignals++;
     lastSignalTime[sym] = Date.now();
 
-    console.log(`🔔 ${sym}: 📈 SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entrada: $${price} | TP1: $${tp1} | SL (EMA144): $${slPrice} | OB ✅`);
+    console.log(`🔔 ${sym}: SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice}`);
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     const obInfo = st.orderBlocks && st.orderBlocks.length > 0 ? 
         `\n🧱 Order Block: ✅ CONFIRMADO` : '';
+    
     sendTelegramMessage(
         `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>Filtro EMA144:</b> ✅ ALINEADA${obInfo}\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
     );
@@ -388,9 +370,7 @@ function analyzeTrendStart(sym) {
             return;
         }
 
-        // Detectar Order Blocks
         detectOrderBlocks(sym);
-
         const trendStarted = detectTrendStart(sym);
         
         if (trendStarted && !st.lastSignal) {
