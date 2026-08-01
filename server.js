@@ -2,8 +2,8 @@ const express = require('express');
 const WebSocket = require('ws');
 const app = express();
 
-console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - SIN MOMENTUM');
-console.log('⚡ Filtros: EMAs separadas + OB fuerte');
+console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - AJUSTES REALISTAS');
+console.log('⚡ Filtros: EMAs separadas (0.05%) + OB (0.3)');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
@@ -12,9 +12,9 @@ const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
 const TIMEFRAME = 60;
 const OB_LOOKBACK = 20;
 
-// FILTROS DE FUERZA (SIN MOMENTUM)
-const MIN_EMA_SEPARATION = 0.001; // 0.1% de separación mínima entre EMAs
-const MIN_OB_STRENGTH = 0.5; // Fuerza mínima del Order Block
+// ✅ AJUSTES REALISTAS
+const MIN_EMA_SEPARATION = 0.0005; // 0.05% (antes 0.1%)
+const MIN_OB_STRENGTH = 0.3; // 0.3 (antes 0.5)
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -210,9 +210,9 @@ function detectOrderBlocks(sym) {
     }
 }
 
-// ==================== FILTROS DE FUERZA (SIN MOMENTUM) ====================
+// ==================== FILTROS ====================
 
-// 1. VERIFICAR SEPARACIÓN DE EMAS
+// 1. VERIFICAR SEPARACIÓN DE EMAS (0.05%)
 function isEMASeparationStrong(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[144] === null) return false;
@@ -227,7 +227,6 @@ function isEMASeparationStrong(sym) {
 
     if (!isBullish && !isBearish) return false;
 
-    // Calcular separación entre EMAs
     const emaPairs = [
         [2, 5], [5, 13], [13, 34], [34, 55], [55, 89], [89, 144]
     ];
@@ -246,7 +245,7 @@ function isEMASeparationStrong(sym) {
     }
 
     if (allSeparated) {
-        console.log(`✅ ${sym}: EMAs separadas (${(MIN_EMA_SEPARATION * 100).toFixed(1)}% mínimo)`);
+        console.log(`✅ ${sym}: EMAs separadas (0.05% mínimo)`);
     } else {
         console.log(`⏳ ${sym}: EMAs juntas - esperando separación`);
     }
@@ -254,7 +253,7 @@ function isEMASeparationStrong(sym) {
     return allSeparated;
 }
 
-// 2. VERIFICAR ORDER BLOCK MÚLTIPLE (al menos 2 OB confirmando)
+// 2. VERIFICAR ORDER BLOCK (SOLO 1 OB)
 function isOrderBlockStrong(sym, direction) {
     const st = pairState[sym];
     if (!st || !st.orderBlocks || st.orderBlocks.length === 0) return false;
@@ -276,11 +275,11 @@ function isOrderBlockStrong(sym, direction) {
         }
     }
 
-    const isStrong = validBlocks >= 2;
+    const isStrong = validBlocks >= 1; // ✅ SOLO 1 OB es suficiente
     if (isStrong) {
-        console.log(`✅ ${sym}: ${validBlocks} Order Blocks confirmando ${isBuy ? 'COMPRA' : 'VENTA'}`);
+        console.log(`✅ ${sym}: Order Block confirmado (${validBlocks})`);
     } else {
-        console.log(`⏳ ${sym}: ${validBlocks} OB(s) - esperando más confirmación`);
+        console.log(`⏳ ${sym}: Sin OB confirmado`);
     }
 
     return isStrong;
@@ -317,7 +316,7 @@ function detectTrendStart(sym) {
         return false;
     }
 
-    // ✅ FILTRO 2: Separación de EMAs (FUERZA)
+    // ✅ FILTRO 2: Separación de EMAs (0.05%)
     const emaSeparation = isEMASeparationStrong(sym);
     if (!emaSeparation) {
         st._pendingEntry = true;
@@ -325,11 +324,11 @@ function detectTrendStart(sym) {
         return false;
     }
 
-    // ✅ FILTRO 3: Order Block fuerte (FUERZA) - SIN MOMENTUM
+    // ✅ FILTRO 3: Order Block (1 OB suficiente)
     const obStrong = isOrderBlockStrong(sym, direction);
     if (!obStrong) {
         st._pendingEntry = true;
-        console.log(`⏳ ${sym}: OB DÉBIL - esperando confirmación`);
+        console.log(`⏳ ${sym}: SIN OB - esperando`);
         return false;
     }
 
@@ -337,7 +336,7 @@ function detectTrendStart(sym) {
         return false;
     }
 
-    console.log(`🚀 ${sym}: SEÑAL FUERTE CONFIRMADA | ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅ | EMAs separadas ✅ | OB fuerte ✅`);
+    console.log(`🚀 ${sym}: SEÑAL CONFIRMADA | ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅ | EMAs separadas ✅ | OB ✅`);
     st._pendingEntry = false;
     return true;
 }
@@ -391,12 +390,7 @@ function generateSignal(sym) {
         tp1,
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
-        status: 'PENDIENTE',
-        filters: {
-            ema144: '✅',
-            emaSeparation: '✅',
-            ob: '✅'
-        }
+        status: 'PENDIENTE'
     };
 
     st.lastSignal = signal;
@@ -411,7 +405,7 @@ function generateSignal(sym) {
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     sendTelegramMessage(
-        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n\n<b>Filtros confirmados:</b>\n🔹 EMA144: ✅ ALINEADA\n🔹 EMAs separadas: ✅\n🔹 Order Block: ✅ FUERTE\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n\n<b>Filtros confirmados:</b>\n🔹 EMA144: ✅ ALINEADA\n🔹 EMAs separadas: ✅\n🔹 Order Block: ✅ CONFIRMADO\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
     );
 }
 
@@ -576,8 +570,8 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            console.log('🚀 KRAKEN PRO ACTIVADO - SIN MOMENTUM');
-            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO\n✅ Sistema en marcha\n📊 Monitoreando 4 símbolos\n🔍 Filtros: EMAs separadas + OB fuerte');
+            console.log('🚀 KRAKEN PRO ACTIVADO - AJUSTES REALISTAS');
+            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO\n✅ Sistema en marcha\n📊 Monitoreando 4 símbolos\n🔍 Filtros: EMAs 0.05% + OB 0.3');
         }, 5000);
     };
     ws.onclose = () => {
@@ -621,7 +615,7 @@ async function connectDeriv() {
 }
 
 // ==================== INICIO AUTOMÁTICO ====================
-console.log('🔄 Iniciando KRAKEN PRO - SIN MOMENTUM...');
+console.log('🔄 Iniciando KRAKEN PRO - AJUSTES REALISTAS...');
 connectDeriv();
 
 // ==================== SERVIDOR WEB ====================
@@ -630,18 +624,18 @@ app.use(express.static('public'));
 app.get('/', (req, res) => {
     res.send(`
         <html><body style="background:#060a18;color:#00d4ff;font-family:monospace;text-align:center;padding:50px;">
-        <h1>🐙 KRAKEN PRO - SIN MOMENTUM</h1>
+        <h1>🐙 KRAKEN PRO - AJUSTES REALISTAS</h1>
         <p>✅ Bot activo en modo servidor</p>
-        <p>🔍 Filtros: EMAs separadas + OB fuerte</p>
+        <p>🔍 Filtros: EMAs 0.05% + OB 0.3</p>
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
-        <p style="color:#10b981;">🚀 Señales con menos filtros</p>
+        <p style="color:#10b981;">🚀 Filtros equilibrados</p>
         </body></html>
     `);
 });
 
 app.get('/ping', (req, res) => {
-    res.status(200).send('🐙 KRAKEN PRO - SIN MOMENTUM ' + new Date().toISOString());
+    res.status(200).send('🐙 KRAKEN PRO - AJUSTES REALISTAS ' + new Date().toISOString());
 });
 
 const PORT = process.env.PORT || 3000;
@@ -649,4 +643,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Servidor web en puerto ${PORT}`);
 });
 
-console.log('⏰ Bot iniciado - SIN MOMENTUM (más entradas)');
+console.log('⏰ Bot iniciado - AJUSTES REALISTAS (0.05% + OB 0.3)');
