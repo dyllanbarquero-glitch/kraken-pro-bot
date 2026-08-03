@@ -387,7 +387,7 @@ function openWS(url) {
     ws = new WebSocket(url);
     ws.onopen = () => {
         console.log('✅ Conectado a Deriv WebSocket');
-        const candleCount = 100;
+        const candleCount = 500;
         ALL_PAIRS.forEach(p => {
             ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
