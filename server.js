@@ -2,14 +2,14 @@ const express = require('express');
 const WebSocket = require('ws');
 const app = express();
 
-console.log('🐙 THE KRAKEN PRO — Deriv Edition - SIMPLIFICADO');
-console.log('⚡ Solo EMAs · 1 hora · TP1 = 1');
+console.log('🐙 THE KRAKEN PRO — Deriv Edition - CORREGIDO');
+console.log('⚡ Toma entrada cuando EMAs estén ALINEADAS (1H)');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
-const TIMEFRAME = 3600; // 1 HORA (3600 segundos)
+const TIMEFRAME = 3600; // 1 HORA
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -127,7 +127,7 @@ function calcEMAs(sym) {
     });
 }
 
-// ==================== DETECTAR TENDENCIA ====================
+// ==================== DETECTAR TENDENCIA (CORREGIDO) ====================
 function detectTrendStart(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null ||
@@ -135,7 +135,7 @@ function detectTrendStart(sym) {
 
     const isBoom = sym.includes('BOOM');
     
-    // ✅ SOLO VERIFICAR QUE LAS EMAS ESTÉN ALINEADAS
+    // ✅ VERIFICAR QUE LAS EMAS ESTÉN ALINEADAS (NO CRUCE)
     const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] &&
                       st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] &&
                       st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
@@ -145,12 +145,14 @@ function detectTrendStart(sym) {
                       st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
 
     if (!isBullish && !isBearish) {
+        st._pendingEntry = false;
         return false;
     }
 
-    // ✅ VERIFICAR EMA144 ALINEADA (CONFIRMACIÓN)
+    // ✅ VERIFICAR EMA144 ALINEADA
     const ema144Aligned = isEMA144Aligned(sym);
     if (!ema144Aligned) {
+        st._pendingEntry = true;
         return false;
     }
 
@@ -159,7 +161,14 @@ function detectTrendStart(sym) {
         return false;
     }
 
+    // ✅ EVITAR SEÑALES DEMASIADO CERCANAS (5 minutos entre señales)
+    const timeSinceLastSignal = Date.now() - lastSignalTime[sym];
+    if (timeSinceLastSignal < 300000) { // 5 minutos
+        return false;
+    }
+
     console.log(`🚀 ${sym}: SEÑAL CONFIRMADA | ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅`);
+    st._pendingEntry = false;
     return true;
 }
 
@@ -222,7 +231,7 @@ function generateSignal(sym) {
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     sendTelegramMessage(
-        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>Filtro EMA144:</b> ✅ ALINEADA\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯 (1:1)\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>Filtro EMA144:</b> ✅ ALINEADA\n<b>Temporalidad:</b> ⏱ 1 HORA\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1 (1:1):</b> $${signal.tp1} 🎯\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
     );
 }
 
@@ -357,7 +366,7 @@ function handleMsg(data) {
                 candleCloseProcessed[sym] = true;
                 EMA_PERIODS.forEach(period => { st.prevEma[period] = st.ema[period]; });
                 st.candles.push(st.price);
-                if (st.candles.length > 500) st.candles.shift();
+                if (st.candles.length > 100) st.candles.shift();
                 calcEMAs(sym);
                 st._lastCandleClose = st.price;
 
@@ -378,7 +387,7 @@ function openWS(url) {
     ws = new WebSocket(url);
     ws.onopen = () => {
         console.log('✅ Conectado a Deriv WebSocket');
-        const candleCount = 100; // Menos velas para 1H
+        const candleCount = 100;
         ALL_PAIRS.forEach(p => {
             ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
@@ -386,8 +395,8 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            console.log('🚀 KRAKEN PRO ACTIVADO - 1H | TP1 = 1');
-            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO\n✅ Sistema en marcha\n📊 Temporalidad: 1 HORA\n🎯 TP1 = 1 (1:1)\n📊 Monitoreando 4 símbolos');
+            console.log('🚀 KRAKEN PRO ACTIVADO - 1H | TP1 = 1 | CORREGIDO');
+            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO (CORREGIDO)\n✅ Sistema en marcha\n📊 Temporalidad: 1 HORA\n🎯 TP1 = 1 (1:1)\n📊 Monitoreando 4 símbolos');
         }, 5000);
     };
     ws.onclose = () => {
@@ -431,7 +440,7 @@ async function connectDeriv() {
 }
 
 // ==================== INICIO AUTOMÁTICO ====================
-console.log('🔄 Iniciando KRAKEN PRO - 1H | TP1 = 1...');
+console.log('🔄 Iniciando KRAKEN PRO - CORREGIDO (EMAs alineadas 1H)...');
 connectDeriv();
 
 // ==================== SERVIDOR WEB ====================
@@ -440,18 +449,19 @@ app.use(express.static('public'));
 app.get('/', (req, res) => {
     res.send(`
         <html><body style="background:#060a18;color:#00d4ff;font-family:monospace;text-align:center;padding:50px;">
-        <h1>🐙 KRAKEN PRO - SIMPLIFICADO</h1>
+        <h1>🐙 KRAKEN PRO - CORREGIDO</h1>
         <p>✅ Bot activo en modo servidor</p>
         <p>📊 Temporalidad: 1 HORA</p>
         <p>🎯 TP1 = 1 (ratio 1:1)</p>
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
+        <p style="color:#10b981;">🚀 Toma entrada con EMAS ALINEADAS</p>
         </body></html>
     `);
 });
 
 app.get('/ping', (req, res) => {
-    res.status(200).send('🐙 KRAKEN PRO - 1H ' + new Date().toISOString());
+    res.status(200).send('🐙 KRAKEN PRO - CORREGIDO ' + new Date().toISOString());
 });
 
 const PORT = process.env.PORT || 3000;
@@ -459,4 +469,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Servidor web en puerto ${PORT}`);
 });
 
-console.log('⏰ Bot iniciado - 1H | TP1 = 1');
+console.log('⏰ Bot iniciado - CORREGIDO (toma entrada con EMAs alineadas)');
