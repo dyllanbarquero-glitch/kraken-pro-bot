@@ -53,7 +53,8 @@
         }
         .kraken-header .logo .badge { font-size: 0.45rem; background: var(--accent2); color: #fff; padding: 2px 8px; border-radius: 999px; -webkit-text-fill-color: #fff; font-weight: 700; }
         .kraken-header .logo .badge.tp { background: var(--gold); color: #000; -webkit-text-fill-color: #000; }
-        .kraken-header .logo .badge.force { background: var(--green); color: #000; -webkit-text-fill-color: #000; }
+        .kraken-header .logo .badge.force { background: #ff6b6b; color: #000; -webkit-text-fill-color: #000; }
+        .kraken-header .logo .badge.filters { background: var(--green); color: #000; -webkit-text-fill-color: #000; }
         .kraken-header .status-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.55rem; }
         .kraken-header .status-bar .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .dot.green { background: var(--green); box-shadow: 0 0 12px var(--green); }
@@ -163,16 +164,17 @@
         .trend-badge.neutral { background: rgba(100, 116, 139, 0.2); color: var(--muted); }
         .trend-badge.start { background: rgba(245, 158, 11, 0.3); color: var(--gold); animation: pulse 1s infinite; }
 
-        .force-badge {
+        .filters-badge {
             display: inline-block;
-            padding: 1px 6px;
-            border-radius: 3px;
-            font-size: 0.42rem;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 0.38rem;
             font-weight: 700;
+            margin: 0 1px;
         }
-        .force-badge.strong { background: rgba(16, 185, 129, 0.2); color: var(--green); }
-        .force-badge.weak { background: rgba(239, 68, 68, 0.2); color: var(--red); }
-        .force-badge.medium { background: rgba(245, 158, 11, 0.2); color: var(--gold); }
+        .filters-badge.passed { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+        .filters-badge.pending { background: rgba(245, 158, 11, 0.2); color: var(--gold); }
+        .filters-badge.failed { background: rgba(239, 68, 68, 0.2); color: var(--red); }
 
         .status-tag { font-size: 0.42rem; padding: 1px 6px; border-radius: 3px; }
         .status-tag.active { background: rgba(16, 185, 129, 0.2); color: var(--green); }
@@ -214,6 +216,7 @@
         .log-line.trend { color: #f59e0b; font-weight: 600; }
         .log-line.start { color: #10b981; font-weight: 700; }
         .log-line.force { color: #ff6b6b; font-weight: 700; }
+        .log-line.filters { color: #00d4ff; font-weight: 600; }
 
         .history-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
         .history-panel .header { padding: 4px 10px; border-bottom: 1px solid var(--border); font-size: 0.55rem; color: var(--muted); }
@@ -276,7 +279,7 @@
             <h1>THE KRAKEN PRO</h1>
             <span class="badge">DERIV EDITION</span>
             <span class="badge tp">TP 1:1</span>
-            <span class="badge force">💪 FUERZA</span>
+            <span class="badge filters">4 FILTROS</span>
             <span class="badge" style="background:var(--green);color:#000;-webkit-text-fill-color:#000;">EMAs 2,5,13</span>
         </div>
         <div class="status-bar">
@@ -297,11 +300,10 @@
             <div class="datafeed-banner">
                 <div class="info">
                     <strong>🐙 DATA FEED ACTIVO</strong> · <span id="feed-symbols">4 símbolos</span> · <span id="feed-tier">1 mes</span>
-                    · <span style="color:var(--green);">✅ INICIO DE TENDENCIA</span>
-                    · <span style="color:var(--gold);">⏱ 1 MIN</span>
+                    · <span style="color:var(--green);">✅ 4 FILTROS</span>
+                    · <span style="color:var(--gold);">⏱ 1min/5min</span>
                     · <span style="color:var(--accent2);">📊 EMAs 2,5,13</span>
                     · <span style="color:var(--green);">🎯 TP 1:1</span>
-                    · <span style="color:#ff6b6b;">💪 FILTRO FUERZA</span>
                 </div>
                 <div class="status">
                     <span id="feed-latency">⚡ &lt;1s</span> ·
@@ -320,7 +322,7 @@
                 <span><span class="label">🔑</span> <span class="value" id="license-display" style="font-size:0.5rem;color:var(--gold);">KRKN-DEMO</span></span>
                 <span><span class="label">📊</span> <span class="value" id="info-emas" style="font-size:0.5rem;color:var(--green);">EMAs 2,5,13</span></span>
                 <span><span class="label">🎯</span> <span class="value" id="info-tp" style="font-size:0.5rem;color:var(--gold);">TP 1:1</span></span>
-                <span><span class="label">💪</span> <span class="value" id="info-force" style="font-size:0.5rem;color:#ff6b6b;">FILTRO FUERZA</span></span>
+                <span><span class="label">🔍</span> <span class="value" id="info-filters" style="font-size:0.5rem;color:#ff6b6b;">4 FILTROS</span></span>
                 <button class="btn btn-warning btn-sm" onclick="switchAccount()">🔄 Cambiar</button>
             </div>
 
@@ -333,7 +335,7 @@
                 <div class="item"><div class="label">Símbolos</div><div class="value purple" id="stat-symbols">4</div></div>
                 <div class="item"><div class="label">EMAs</div><div class="value gold" id="stat-emas">2,5,13</div></div>
                 <div class="item"><div class="label">TP Ratio</div><div class="value green" id="stat-tp">1:1</div></div>
-                <div class="item"><div class="label">Filtro</div><div class="value force" id="stat-force">💪 FUERZA</div></div>
+                <div class="item"><div class="label">Filtros</div><div class="value force" id="stat-filters">4 ACTIVOS</div></div>
             </div>
 
             <!-- CONFIG -->
@@ -342,8 +344,8 @@
                 <div class="config-grid">
                     <div class="field"><label>EMAs</label><input type="text" value="2, 5, 13" disabled style="color:var(--green);"/></div>
                     <div class="field"><label>TP Ratio</label><input type="text" value="1:1" disabled style="color:var(--gold);"/></div>
-                    <div class="field"><label>Temporalidad</label><input type="text" value="1 MIN" disabled style="color:var(--accent);"/></div>
-                    <div class="field"><label>Filtro Fuerza</label><input type="text" value="✅ ACTIVADO" disabled style="color:#ff6b6b;"/></div>
+                    <div class="field"><label>Temporalidad</label><input type="text" value="1min / 5min" disabled style="color:var(--accent);"/></div>
+                    <div class="field"><label>Filtros</label><input type="text" value="FUERZA + VOLUMEN + VELA + 5min" disabled style="color:#ff6b6b;"/></div>
                     <div class="field"><label>Alertas MT5</label>
                         <select id="mt5-alerts">
                             <option value="all">Popup + Sonido + Push</option>
@@ -367,7 +369,7 @@
                 <span class="key" id="license-key-display">KRKN-DEMO-2024-0001</span>
                 <span style="color:var(--green);">✅ Activo</span>
                 <span style="color:var(--gold);margin-left:10px;">📊 EMAs 2,5,13 · TP 1:1</span>
-                <span style="color:#ff6b6b;margin-left:10px;">💪 FILTRO FUERZA</span>
+                <span style="color:#ff6b6b;margin-left:10px;">🔍 4 FILTROS</span>
                 <button class="btn btn-secondary btn-sm" onclick="showLicenseModal()" style="margin-left:auto;">Ver detalles</button>
             </div>
 
@@ -376,11 +378,11 @@
 
             <!-- HISTORY -->
             <div class="history-panel">
-                <div class="header">📋 HISTORIAL · <span style="color:var(--accent);">KRAKEN PRO</span> · <span style="color:var(--gold);">TP 1:1</span> · <span style="color:#ff6b6b;">💪 FUERZA</span></div>
+                <div class="header">📋 HISTORIAL · <span style="color:var(--accent);">KRAKEN PRO</span> · <span style="color:var(--gold);">TP 1:1</span> · <span style="color:#ff6b6b;">4 FILTROS</span></div>
                 <div style="overflow-x:auto;">
                     <table class="history-table">
                         <thead>
-                            <tr><th>Hora</th><th>Par</th><th>Dirección</th><th>Precio</th><th>TP1</th><th>SL</th><th>Fuerza</th><th>Estado</th></tr>
+                            <tr><th>Hora</th><th>Par</th><th>Dirección</th><th>Precio</th><th>TP1</th><th>SL</th><th>Filtros</th><th>Estado</th></tr>
                         </thead>
                         <tbody id="history-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr></tbody>
                     </table>
@@ -419,11 +421,12 @@
             <h3>📖 MANUAL</h3>
             <ul>
                 <li><strong>01.</strong> Instalación y activación</li>
-                <li><strong>02.</strong> Configuración actual: EMAs 2,5,13</li>
+                <li><strong>02.</strong> EMAs: 2, 5, 13</li>
                 <li><strong>03.</strong> TP Ratio: 1:1</li>
-                <li><strong>04.</strong> Señales al INICIO de tendencia</li>
-                <li><strong>05.</strong> SL basado en distancia EMA2-EMA13</li>
-                <li><strong>06.</strong> FILTRO FUERZA: Solo entra cuando hay momentum fuerte</li>
+                <li><strong>04.</strong> FILTRO 1: FUERZA (EMA2-EMA13 ≥ 0.15%)</li>
+                <li><strong>05.</strong> FILTRO 2: VOLUMEN (volatilidad > 1.2x promedio)</li>
+                <li><strong>06.</strong> FILTRO 3: VELA (cuerpo > 1.8x promedio)</li>
+                <li><strong>07.</strong> FILTRO 4: 5min (confirma tendencia)</li>
             </ul>
             <button class="btn btn-secondary btn-sm" onclick="closeModal('manual-modal')" style="width:100%;margin-top:8px;">Cerrar</button>
         </div>
@@ -450,13 +453,14 @@
     <script>
         // ============================================================
         // 🐙 THE KRAKEN PRO — DERIV EDITION v5.0
-        // EMAS: 2, 5, 13 · TP 1:1 · FILTRO FUERZA
+        // EMAS: 2, 5, 13 · TP 1:1 · 4 FILTROS
         // ============================================================
 
         const REST_BASE = 'https://api.derivws.com';
         const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
         const EMA_PERIODS = [2, 5, 13];
         const TIMEFRAME = 60;
+        const TIMEFRAME_5MIN = 300;
 
         const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
         const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -468,29 +472,34 @@
         let currentAccountType = 'real', currentAccountId = '';
         let appId = APP_ID, patToken = PAT_TOKEN, allAccounts = [];
         let reconnectAttempts = 0, reconnectTimer = null;
-        let lastCandleKey = {}, candleCloseProcessed = {}, lastSignalTime = {};
+        let lastCandleKey = {}, lastCandleKey5min = {};
+        let candleCloseProcessed = {}, candleCloseProcessed5min = {};
+        let lastSignalTime = {};
         let telegramConnected = false, refreshTimer = null;
         let dataFeedActive = true, licenseValid = true, licenseKey = LICENSE_KEY;
-        let dataFeedTier = '1 mes', dataLoadedCount = 0;
+        let dataFeedTier = '1 mes', dataLoadedCount = 0, dataLoadedCount5min = 0;
         let useSimulatedData = false, analysisQueue = [], isProcessingQueue = false;
         let logBuffer = [], autoStartDone = false;
 
         ALL_PAIRS.forEach(p => {
             pairState[p] = {
-                price: null, ema: {}, prevEma: {}, candles: [], loaded: false,
+                price: null, ema: {}, prevEma: {}, candles: [], candles5min: [],
+                loaded: false, loaded5min: false,
                 lastTrend: null, waitingForNewTrend: false, lastSignal: null,
-                signalExpired: false, _lastCandleClose: null, _lastLogTime: 0,
-                _trendStarted: false, _trendStartPrice: null, _trendStartTime: null,
-                _trendAge: 0, _tp1Hit: false, _partialSLLogged: false,
-                _pendingEntry: false, _pendingEntryPrice: null, _pendingEntryTime: null,
-                _entryTaken: false, _force: 0
+                signalExpired: false, _lastCandleClose: null, _lastCandleClose5min: null,
+                _lastLogTime: 0, _trendStarted: false, _trendStartPrice: null,
+                _trendStartTime: null, _trendAge: 0, _tp1Hit: false,
+                _partialSLLogged: false, _pendingEntry: false, _entryTaken: false,
+                _force: 0, _volume: 0, _candleBody: 0
             };
             EMA_PERIODS.forEach(period => {
                 pairState[p].ema[period] = null;
                 pairState[p].prevEma[period] = null;
             });
             lastCandleKey[p] = null;
+            lastCandleKey5min[p] = null;
             candleCloseProcessed[p] = false;
+            candleCloseProcessed5min[p] = false;
             lastSignalTime[p] = 0;
         });
 
@@ -630,17 +639,17 @@
                     trend = '📈 BULLISH';
                     cls = 'bullish';
                     if (st._trendStarted) trendLabel = '🚀 INICIO';
-                    if (st._pendingEntry) trendLabel = '⏳ ESPERANDO';
+                    if (st._pendingEntry) trendLabel = '⏳ FILTROS';
                 } else if (ema2 < ema5 && ema5 < ema13) {
                     trend = '📉 BEARISH';
                     cls = 'bearish';
                     if (st._trendStarted) trendLabel = '🚀 INICIO';
-                    if (st._pendingEntry) trendLabel = '⏳ ESPERANDO';
+                    if (st._pendingEntry) trendLabel = '⏳ FILTROS';
                 }
             }
 
             let statusText = '⏳ Esperando', statusClass = 'waiting';
-            if (st._pendingEntry) { statusText = '⏳ ESPERANDO'; statusClass = 'waiting'; }
+            if (st._pendingEntry) { statusText = '⏳ FILTROS'; statusClass = 'waiting'; }
             else if (st.waitingForNewTrend) { statusText = '⏳ Cambio'; statusClass = 'waiting'; }
             else if (st.signalExpired) { statusText = '⏹ EXPIRADA'; statusClass = 'expired'; }
             else if (st.lastSignal && !st.signalExpired) { statusText = '🔴 ACTIVA'; statusClass = 'active'; }
@@ -658,25 +667,29 @@
                 if (st.lastSignal && !st.signalExpired) {
                     const sClass = st.lastSignal.type === 'MULTUP' ? 'signal-box' : 'signal-box bear';
                     const s = st.lastSignal;
-                    const forcePct = s.force ? (s.force * 10000).toFixed(2) : '0';
                     signalHtml = `
                 <div class="${sClass}">
-                  🐙 ${s.type === 'MULTUP' ? '🟢 COMPRA' : '🔴 VENTA'} 💪 ${forcePct}%
+                  🐙 ${s.type === 'MULTUP' ? '🟢 COMPRA' : '🔴 VENTA'}
                   <div style="font-size:0.4rem;color:var(--muted);">Entry: $${s.price.toFixed(4)}</div>
                   <div class="tp-badges">
                     <span class="tp-badge tp1">TP1: $${s.tp1.toFixed(4)}</span>
                     <span class="tp-badge sl-badge">SL: $${s.sl.toFixed(4)}</span>
+                  </div>
+                  <div style="font-size:0.38rem;color:#ff6b6b;margin-top:2px;">
+                    💪 ${(s.force*10000).toFixed(2)}% · 📊 ${(s.volume*100).toFixed(0)}% · 🕯️ ${(s.candleBody*100).toFixed(0)}%
                   </div>
                 </div>`;
                 } else if (st.signalExpired) {
                     signalHtml = `<div class="signal-box expired">⏹ SEÑAL EXPIRADA</div>`;
                 } else if (st._trendStarted) {
                     signalHtml =
-                        `<div class="signal-box" style="border-color:var(--gold);color:var(--gold);background:rgba(245,158,11,0.1);">🚀 INICIO DE TENDENCIA ${trend.includes('BULLISH') ? 'ALCISTA' : 'BAJISTA'} 💪 ${(st._force * 10000).toFixed(2)}%</div>`;
+                        `<div class="signal-box" style="border-color:var(--gold);color:var(--gold);background:rgba(245,158,11,0.1);">🚀 INICIO ${trend.includes('BULLISH') ? 'ALCISTA' : 'BAJISTA'}</div>`;
                 }
 
-                const forceClass = st._force >= 0.002 ? 'strong' : (st._force >= 0.001 ? 'medium' : 'weak');
-                const forceLabel = st._force >= 0.002 ? '🔥 FUERTE' : (st._force >= 0.001 ? '⚡ MEDIA' : '💨 DÉBIL');
+                const forcePct = (st._force * 10000).toFixed(2);
+                const volPct = (st._volume * 100).toFixed(0);
+                const bodyPct = (st._candleBody * 100).toFixed(0);
+                const filtrosOk = st._force >= 0.0015 && st._volume > 1.2 && st._candleBody > 1.8;
 
                 body.innerHTML = `
               <div class="ema-row">
@@ -686,11 +699,15 @@
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2px;">
                 <span class="trend-badge ${cls}">${trend} ${trendLabel}</span>
-                <span class="force-badge ${forceClass}">💪 ${forceLabel}</span>
+                <div style="display:flex;gap:2px;flex-wrap:wrap;">
+                  <span class="filters-badge ${st._force >= 0.0015 ? 'passed' : 'pending'}">💪 ${forcePct}%</span>
+                  <span class="filters-badge ${st._volume > 1.2 ? 'passed' : 'pending'}">📊 ${volPct}%</span>
+                  <span class="filters-badge ${st._candleBody > 1.8 ? 'passed' : 'pending'}">🕯️ ${bodyPct}%</span>
+                  <span class="filters-badge ${st.candles5min.length > 13 ? 'passed' : 'pending'}">⏰ 5min</span>
+                </div>
                 ${st._lastCandleClose ? `<span style="font-size:0.42rem;color:var(--green);">✅ Cierre: $${st._lastCandleClose.toFixed(4)}</span>` : ''}
-                ${st._trendStarted ? `<span style="font-size:0.42rem;color:var(--gold);">⏱ ${Math.round(st._trendAge/60)}m</span>` : ''}
               </div>
-              <div style="font-size:0.42rem;color:var(--muted);">Velas 1min: ${st.candles.length}</div>
+              <div style="font-size:0.42rem;color:var(--muted);">Velas 1min: ${st.candles.length} · 5min: ${st.candles5min.length}</div>
               ${signalHtml}`;
             }
 
@@ -714,7 +731,7 @@
               <td>$${s.price.toFixed(4)}</td>
               <td style="color:var(--green);">$${s.tp1.toFixed(4)}</td>
               <td style="color:var(--red);">$${s.sl.toFixed(4)}</td>
-              <td style="color:#ff6b6b;">${s.force ? (s.force * 10000).toFixed(2) + '%' : 'N/A'}</td>
+              <td style="color:#ff6b6b;font-size:0.42rem;">💪${(s.force*10000).toFixed(0)}% 📊${(s.volume*100).toFixed(0)}% 🕯️${(s.candleBody*100).toFixed(0)}%</td>
               <td style="color:${s.status === 'TP1 🎯' ? 'var(--green)' : s.status === 'SL 🛑' ? 'var(--red)' : 'var(--gold)'}">${s.status || 'PENDIENTE'}</td>
             </tr>`
             ).join('');
@@ -767,8 +784,53 @@
             if (!st) return false;
             const force = calculateForce(sym);
             st._force = force;
-            const isValid = force >= 0.0015;
-            return isValid;
+            return force >= 0.0015;
+        }
+
+        function hasVolume(sym) {
+            const st = pairState[sym];
+            if (!st || !st.candles || st.candles.length < 20) return false;
+            const prices = st.candles.slice(-20);
+            const avgRange = prices.reduce((sum, p, i, arr) => {
+                if (i === 0) return 0;
+                return sum + Math.abs(p - arr[i-1]);
+            }, 0) / (prices.length - 1);
+            const currentRange = st.candles.length > 1 ? 
+                Math.abs(st.candles[st.candles.length - 1] - st.candles[st.candles.length - 2]) : 0;
+            st._volume = currentRange / (avgRange + 0.0001);
+            return st._volume > 1.2;
+        }
+
+        function hasStrongCandle(sym) {
+            const st = pairState[sym];
+            if (!st || !st.candles || st.candles.length < 20) return false;
+            const prices = st.candles.slice(-20);
+            const avgBody = prices.reduce((sum, p, i, arr) => {
+                if (i === 0) return 0;
+                return sum + Math.abs(p - arr[i-1]);
+            }, 0) / (prices.length - 1);
+            const currentBody = st.candles.length > 1 ? 
+                Math.abs(st.candles[st.candles.length - 1] - st.candles[st.candles.length - 2]) : 0;
+            st._candleBody = currentBody / (avgBody + 0.0001);
+            return st._candleBody > 1.8;
+        }
+
+        function checkMultiTimeframe(sym) {
+            const st = pairState[sym];
+            if (!st || !st.candles5min || st.candles5min.length < 13) return true;
+            const prices = st.candles5min.slice();
+            const ema5min = {};
+            EMA_PERIODS.forEach(period => {
+                ema5min[period] = calculateEMA(prices, period);
+            });
+            if (!ema5min[2] || !ema5min[5] || !ema5min[13]) return true;
+            const isBullish5min = ema5min[2] > ema5min[5] && ema5min[5] > ema5min[13];
+            const isBearish5min = ema5min[2] < ema5min[5] && ema5min[5] < ema5min[13];
+            const isBullish1min = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
+            const isBearish1min = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
+            if (isBullish1min && !isBullish5min) return false;
+            if (isBearish1min && !isBearish5min) return false;
+            return true;
         }
 
         function detectTrendStart(sym) {
@@ -784,10 +846,10 @@
                 return false;
             }
 
-            if (!isForceValid(sym)) {
-                st._pendingEntry = true;
-                return false;
-            }
+            if (!isForceValid(sym)) { st._pendingEntry = true; return false; }
+            if (!hasVolume(sym)) { st._pendingEntry = true; return false; }
+            if (!hasStrongCandle(sym)) { st._pendingEntry = true; return false; }
+            if (!checkMultiTimeframe(sym)) { st._pendingEntry = true; return false; }
 
             const prevEma2 = st.prevEma[2];
             const prevEma5 = st.prevEma[5];
@@ -801,12 +863,10 @@
             const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (st.ema[5] < st.ema[13]);
 
             if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) {
-                st._pendingEntry = false;
-                return true;
+                st._pendingEntry = false; return true;
             }
             if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) {
-                st._pendingEntry = false;
-                return true;
+                st._pendingEntry = false; return true;
             }
 
             if (!st._trendStarted && !st.lastSignal) {
@@ -824,22 +884,15 @@
 
             const price = st.price, signal = st.lastSignal, isBoom = sym.includes('BOOM');
 
-            if (signal.status === 'PENDIENTE') {
-                st._tp1Hit = false;
-                st._partialSLLogged = false;
-            }
+            if (signal.status === 'PENDIENTE') { st._tp1Hit = false; }
 
             if (!st._tp1Hit) {
                 if ((isBoom && price >= signal.tp1) || (!isBoom && price <= signal.tp1)) {
-                    st._tp1Hit = true;
-                    signal.status = 'TP1 🎯';
-                    st.signalExpired = true;
-                    wins++;
+                    st._tp1Hit = true; signal.status = 'TP1 🎯'; st.signalExpired = true; wins++;
                     sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🎯✅ ¡TP1 ALCANZADO! 💰\n📈 Operación cerrada.\n🐙 ¡Excelente!`);
                     log(`📨 Telegram: TP1 alcanzado en ${sym}`, 'telegram');
-                    updateSignalBadge();
-                    updateHistory();
-                    updateCard(sym);
+                    updateSignalBadge(); updateHistory(); updateCard(sym);
+                    resetPairState(sym);
                     return;
                 }
             }
@@ -847,22 +900,15 @@
             if (!st.signalExpired && !st._tp1Hit) {
                 if ((isBoom && price <= signal.sl) || (!isBoom && price >= signal.sl)) {
                     sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🛑❌ ¡SL ALCANZADO!\n📉 Operación cerrada.\n🐙 ¡Siguiente!`);
-                    signal.status = 'SL 🛑';
-                    st.signalExpired = true;
-                    losses++;
-                    updateSignalBadge();
-                    updateHistory();
-                    updateCard(sym);
+                    signal.status = 'SL 🛑'; st.signalExpired = true; losses++;
+                    updateSignalBadge(); updateHistory(); updateCard(sym);
+                    resetPairState(sym);
                     return;
                 }
             }
-
-            if (st.signalExpired) return;
+            if (st.signalExpired) { resetPairState(sym); return; }
             const entry = signalHistory.find(s => s.sym === sym && s.status === 'PENDIENTE');
-            if (entry && signal.status !== 'PENDIENTE') {
-                entry.status = signal.status;
-                updateHistory();
-            }
+            if (entry && signal.status !== 'PENDIENTE') { entry.status = signal.status; updateHistory(); }
             updateCard(sym);
         }
 
@@ -872,7 +918,7 @@
 
             try {
                 const st = pairState[sym];
-                if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null) {
+                if (!st || st.ema[2] === null) {
                     isProcessingQueue = false; processNextInQueue(); return;
                 }
                 if (!signalsActive || !dataFeedActive || !licenseValid) {
@@ -898,26 +944,22 @@
                         sym, type: isBoom && isBullishTrend ? 'MULTUP' : 'MULTDOWN',
                         price, tp1, sl: slPrice,
                         time: new Date().toLocaleTimeString(), status: 'PENDIENTE',
-                        force: st._force
+                        force: st._force, volume: st._volume, candleBody: st._candleBody
                     };
 
-                    st.lastSignal = signal;
-                    st.signalExpired = false;
-                    st._trendStarted = true;
-                    st._tp1Hit = false;
-                    totalSignals++;
-                    lastSignalTime[sym] = Date.now();
+                    st.lastSignal = signal; st.signalExpired = false; st._trendStarted = true;
+                    st._tp1Hit = false; totalSignals++; lastSignalTime[sym] = Date.now();
                     signalHistory.unshift(signal);
                     if (signalHistory.length > 50) signalHistory.pop();
-                    updateSignalBadge();
-                    updateHistory();
-                    updateCard(sym);
+                    updateSignalBadge(); updateHistory(); updateCard(sym);
 
                     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
                     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
                     const forcePct = (st._force * 10000).toFixed(2);
+                    const volPct = (st._volume * 100).toFixed(0);
+                    const bodyPct = (st._candleBody * 100).toFixed(0);
                     sendTelegramMessage(
-                        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'} CON FUERZA\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n<b>Fuerza:</b> ${forcePct}%\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+                        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>Filtros:</b> ✅ FUERZA ✅ VOLUMEN ✅ VELA ✅ 5min\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n<b>Fuerza:</b> ${forcePct}%\n<b>Volumen:</b> ${volPct}%\n<b>Cuerpo:</b> ${bodyPct}%\n\n⏰ ${signal.time}`
                     );
                     isProcessingQueue = false; processNextInQueue(); return;
                 }
@@ -982,7 +1024,7 @@
             if (ws) try { ws.close(); } catch (e) {}
 
             if (!url || useSimulatedData) {
-                log('🐙 Modo simulación activado - FILTRO FUERZA', 'warn');
+                log('🐙 Modo simulación activado - 4 FILTROS', 'warn');
                 simulateDataLoading();
                 return;
             }
@@ -992,11 +1034,12 @@
                 setConn(true);
                 reconnectAttempts = 0;
                 log('🐙 Conectado a Deriv', 'success');
-                log(`📊 EMAs: 2,5,13 · TP 1:1 · FILTRO FUERZA ACTIVADO`, 'info');
+                log(`📊 4 FILTROS: FUERZA + VOLUMEN + VELA + 5min`, 'info');
                 buildUI();
                 ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 ALL_PAIRS.forEach(p => {
                     ws.send(JSON.stringify({ ticks_history: p, count: 500, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
+                    ws.send(JSON.stringify({ ticks_history: p, count: 100, end: 'latest', granularity: TIMEFRAME_5MIN, style: 'candles', passthrough: { symbol: p } }));
                     ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
                 });
 
@@ -1027,7 +1070,7 @@
         }
 
         function simulateDataLoading() {
-            log('📊 Generando datos simulados... (FILTRO FUERZA)', 'info');
+            log('📊 Generando datos simulados... (4 FILTROS)', 'info');
             const candleCount = 500;
             ALL_PAIRS.forEach((p, idx) => {
                 const st = pairState[p];
@@ -1043,20 +1086,22 @@
                     candles.push(parseFloat(price.toFixed(4)));
                 }
                 st.candles = candles;
+                st.candles5min = candles.filter((_, i) => i % 5 === 0);
                 st.price = candles[candles.length - 1];
                 EMA_PERIODS.forEach(period => { st.prevEma[period] = null; });
                 calcEMAs(p);
                 st.loaded = true;
+                st.loaded5min = true;
                 st._lastCandleClose = st.price;
                 dataLoadedCount++;
-                log(`📊 ${p}: ${candles.length} velas 1min simuladas`, 'info');
+                log(`📊 ${p}: ${candles.length} velas 1min + ${st.candles5min.length} velas 5min simuladas`, 'info');
                 updateCard(p);
             });
 
             if (dataLoadedCount >= ALL_PAIRS.length) {
                 dataLoaded = true;
                 buildUI();
-                log('🐙 KRAKEN PRO LISTO (MODO SIMULADO) - EMAs 2,5,13 · TP 1:1 · FILTRO FUERZA', 'success');
+                log('🐙 KRAKEN PRO LISTO - 4 FILTROS ACTIVADOS', 'success');
                 updateSignalBadge();
                 if (refreshTimer) clearInterval(refreshTimer);
                 refreshTimer = setInterval(() => { if (signalsActive) simulateCandleClose(); }, 2000);
@@ -1079,6 +1124,7 @@
                 EMA_PERIODS.forEach(period => { st.prevEma[period] = st.ema[period]; });
                 st.candles.push(st.price);
                 if (st.candles.length > 500) st.candles.shift();
+                if (st.candles.length % 5 === 0) { st.candles5min.push(st.price); if (st.candles5min.length > 100) st.candles5min.shift(); }
                 calcEMAs(p);
                 analyzeTrendStart(p);
                 if (st.lastSignal && !st.signalExpired) checkSignalExpiry(p);
@@ -1106,19 +1152,25 @@
                 const candles = data.candles || [];
                 const st = pairState[sym];
                 if (!st || !candles.length) return;
-                st.candles = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
-                st.price = st.candles[st.candles.length - 1];
-                EMA_PERIODS.forEach(period => { st.prevEma[period] = null; });
-                calcEMAs(sym);
-                st.loaded = true;
-                st._lastCandleClose = st.price;
-                dataLoadedCount++;
-                log(`📊 ${sym}: ${st.candles.length} velas 1min cargadas`, 'info');
-                updateCard(sym);
-                if (dataLoadedCount >= ALL_PAIRS.length) {
+                const granularity = data.granularity || 60;
+                if (granularity === TIMEFRAME) {
+                    st.candles = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
+                    st.price = st.candles[st.candles.length - 1];
+                    EMA_PERIODS.forEach(period => { st.prevEma[period] = null; });
+                    calcEMAs(sym);
+                    st.loaded = true;
+                    st._lastCandleClose = st.price;
                     dataLoaded = true;
-                    log('🐙 KRAKEN PRO LISTO - FILTRO FUERZA ACTIVADO', 'success');
-                    updateSignalBadge();
+                    log(`📊 ${sym}: ${st.candles.length} velas 1min cargadas`, 'info');
+                } else if (granularity === TIMEFRAME_5MIN) {
+                    st.candles5min = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
+                    st.loaded5min = true;
+                    st._lastCandleClose5min = st.candles5min[st.candles5min.length - 1];
+                    log(`📊 ${sym}: ${st.candles5min.length} velas 5min cargadas`, 'info');
+                }
+                updateCard(sym);
+                if (dataLoaded && st.loaded5min) {
+                    log(`✅ ${sym}: Datos 1min y 5min listos`, 'success');
                 }
                 return;
             }
@@ -1127,10 +1179,14 @@
                 const sym = data.tick?.symbol || data.symbol;
                 const st = pairState[sym];
                 if (!st || !data.tick?.quote) return;
+
                 st.price = parseFloat(data.tick.quote);
+
                 const now = new Date();
                 const minutes = now.getMinutes();
                 const candleKey = `${now.getHours()}:${minutes}`;
+                const candleKey5min = `${now.getHours()}:${Math.floor(minutes / 5) * 5}`;
+
                 if (lastCandleKey[sym] && lastCandleKey[sym] !== candleKey) {
                     if (!candleCloseProcessed[sym]) {
                         candleCloseProcessed[sym] = true;
@@ -1140,13 +1196,20 @@
                         calcEMAs(sym);
                         st._lastCandleClose = st.price;
                         if (dataLoaded && signalsActive) { analyzeTrendStart(sym); }
-                        if (st.lastSignal && !st.signalExpired) checkSignalExpiry(sym);
-                        updateCard(sym);
                     }
-                } else {
-                    candleCloseProcessed[sym] = false;
-                }
+                } else { candleCloseProcessed[sym] = false; }
                 lastCandleKey[sym] = candleKey;
+
+                if (lastCandleKey5min[sym] && lastCandleKey5min[sym] !== candleKey5min) {
+                    if (!candleCloseProcessed5min[sym]) {
+                        candleCloseProcessed5min[sym] = true;
+                        st.candles5min.push(st.price);
+                        if (st.candles5min.length > 200) st.candles5min.shift();
+                        st._lastCandleClose5min = st.price;
+                    }
+                } else { candleCloseProcessed5min[sym] = false; }
+                lastCandleKey5min[sym] = candleKey5min;
+
                 updateCard(sym);
             }
         }
@@ -1161,16 +1224,16 @@
             $('btn-start').disabled = true;
             $('btn-stop').disabled = false;
 
-            log('🚀 KRAKEN PRO ACTIVADO - FILTRO FUERZA ACTIVADO', 'start');
-            log(`📊 ${ALL_PAIRS.length} símbolos · EMAs: 2,5,13 · TP 1:1 · FILTRO FUERZA`, 'info');
+            log('🚀 KRAKEN PRO ACTIVADO - 4 FILTROS ACTIVOS', 'start');
+            log(`📊 ${ALL_PAIRS.length} símbolos · EMAs: 2,5,13 · TP 1:1 · 4 FILTROS`, 'info');
 
             const imageUrl = "https://i.postimg.cc/256thK2x/file-000000006dfc722f8bcb7e91ca1d9e6a.png";
             const caption = `🐙 *KRAKEN PRO ACTIVADO*\n\n` +
                 `✅ Sistema en marcha.\n` +
-                `📡 Monitoreando *${ALL_PAIRS.length}* símbolos (1min).\n` +
+                `📡 Monitoreando *${ALL_PAIRS.length}* símbolos (1min/5min).\n` +
                 `📊 EMAs: 2,5,13\n` +
                 `🎯 TP Ratio: 1:1\n` +
-                `💪 FILTRO FUERZA ACTIVADO\n` +
+                `🔍 4 FILTROS: FUERZA + VOLUMEN + VELA + 5min\n` +
                 `🐙 *THE KRAKEN PRO*`;
             sendTelegramPhoto(imageUrl, caption);
 
@@ -1219,16 +1282,16 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - FILTRO FUERZA', 'signal');
-            log('⚡ Señales solo con FUERZA · EMAs: 2,5,13 · TP 1:1', 'start');
-            log(`📊 ${ALL_PAIRS.length} símbolos · 1min · FILTRO FUERZA ACTIVADO`, 'info');
+            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - 4 FILTROS', 'signal');
+            log('⚡ FILTROS: FUERZA + VOLUMEN + VELA + 5min · EMAs: 2,5,13 · TP 1:1', 'start');
+            log(`📊 ${ALL_PAIRS.length} símbolos · 1min/5min · 4 FILTROS ACTIVOS`, 'info');
             log('📨 Telegram integrado', 'telegram');
             log('🔔 Alertas MT5: Popup + Sonido + Push', 'alert');
             $('stat-symbols').textContent = ALL_PAIRS.length;
             $('stat-emas').textContent = '2,5,13';
             $('stat-tp').textContent = '1:1';
-            $('stat-force').textContent = '💪 FUERZA';
-            $('stat-analysis').textContent = 'INICIO TENDENCIA + FUERZA';
+            $('stat-filters').textContent = '4 ACTIVOS';
+            $('stat-analysis').textContent = '4 FILTROS';
             $('stat-analysis').className = 'value force';
             $('feed-tier').textContent = dataFeedTier;
             $('license-key-display').textContent = licenseKey;
