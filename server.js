@@ -10,7 +10,7 @@ const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13];
 const TIMEFRAME = 60;
-const MIN_FORCE = 1.5; // Factor mínimo de fuerza (distancia EMA2 vs EMA13)
+const MIN_FORCE = 1; // Factor mínimo de fuerza (distancia EMA2 vs EMA13)
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
