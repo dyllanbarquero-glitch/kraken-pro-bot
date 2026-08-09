@@ -2,14 +2,15 @@ const express = require('express');
 const WebSocket = require('ws');
 const app = express();
 
-console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - AJUSTADO');
-console.log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13 · TP 1:1');
+console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - FILTRO FUERZA');
+console.log('⚡ Señales solo cuando EMAs tienen FUERZA · EMAs: 2,5,13 · TP 1:1');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const EMA_PERIODS = [2, 5, 13]; // ✅ SOLO 3 EMAS
-const TIMEFRAME = 60; // 1 minuto
+const EMA_PERIODS = [2, 5, 13];
+const TIMEFRAME = 60;
+const MIN_FORCE = 1.5; // Factor mínimo de fuerza (distancia EMA2 vs EMA13)
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -55,7 +56,8 @@ ALL_PAIRS.forEach(p => {
         _tp1Hit: false,
         _partialSLLogged: false,
         _pendingEntry: false,
-        _entryTaken: false
+        _entryTaken: false,
+        _force: 0 // Almacena la fuerza actual
     };
     EMA_PERIODS.forEach(period => {
         pairState[p].ema[period] = null;
@@ -124,6 +126,41 @@ function calcEMAs(sym) {
     });
 }
 
+// ==================== CALCULAR FUERZA ====================
+function calculateForce(sym) {
+    const st = pairState[sym];
+    if (!st || st.ema[2] === null || st.ema[13] === null) return 0;
+    
+    const ema2 = st.ema[2];
+    const ema13 = st.ema[13];
+    
+    // Fuerza = distancia relativa entre EMA2 y EMA13
+    const distance = Math.abs(ema2 - ema13);
+    const force = distance / (ema13 + 0.0001);
+    
+    return force;
+}
+
+function isForceValid(sym) {
+    const st = pairState[sym];
+    if (!st) return false;
+    
+    const force = calculateForce(sym);
+    st._force = force;
+    
+    // ✅ Condición de fuerza: distancia EMA2-EMA13 >= MIN_FORCE * 0.001
+    // Ajustado para ser más sensible
+    const isValid = force >= 0.0015;
+    
+    if (isValid) {
+        console.log(`💪 ${sym}: FUERZA VALIDA (${(force * 10000).toFixed(2)})`);
+    } else {
+        console.log(`⏳ ${sym}: FUERZA BAJA (${(force * 10000).toFixed(2)}) - Esperando...`);
+    }
+    
+    return isValid;
+}
+
 // ==================== DETECTAR TENDENCIA ====================
 function detectTrendStart(sym) {
     const st = pairState[sym];
@@ -131,12 +168,18 @@ function detectTrendStart(sym) {
 
     const isBoom = sym.includes('BOOM');
     
-    // Verificar alineación de las 3 EMAs
+    // Verificar tendencia
     const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
     const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
 
     if (!isBullish && !isBearish) {
         st._pendingEntry = false;
+        return false;
+    }
+
+    // Verificar fuerza
+    if (!isForceValid(sym)) {
+        st._pendingEntry = true;
         return false;
     }
 
@@ -152,30 +195,30 @@ function detectTrendStart(sym) {
     const ema2CrossedBelow5 = (prevEma2 >= prevEma5) && (st.ema[2] < st.ema[5]);
     const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (st.ema[5] < st.ema[13]);
 
-    // Detectar inicio de tendencia por cruce
+    // Detectar inicio de tendencia por cruce CON fuerza
     if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) {
-        console.log(`🚀 ${sym}: INICIO TENDENCIA ALCISTA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+        console.log(`🚀 ${sym}: INICIO TENDENCIA ALCISTA CON FUERZA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]} | Fuerza: ${(st._force * 10000).toFixed(2)}`);
         st._pendingEntry = false;
         return true;
     }
     
     if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) {
-        console.log(`🚀 ${sym}: INICIO TENDENCIA BAJISTA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+        console.log(`🚀 ${sym}: INICIO TENDENCIA BAJISTA CON FUERZA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]} | Fuerza: ${(st._force * 10000).toFixed(2)}`);
         st._pendingEntry = false;
         return true;
     }
 
-    // Si ya hay tendencia establecida, continuar
+    // Si ya hay tendencia establecida CON fuerza
     if (!st._trendStarted && !st.lastSignal) {
         const prevBullish = prevEma2 > prevEma5 && prevEma5 > prevEma13;
         const prevBearish = prevEma2 < prevEma5 && prevEma5 < prevEma13;
         
         if (isBoom && isBullish && prevBullish) {
-            console.log(`🚀 ${sym}: TENDENCIA ALCISTA ESTABLECIDA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+            console.log(`🚀 ${sym}: TENDENCIA ALCISTA ESTABLECIDA CON FUERZA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]} | Fuerza: ${(st._force * 10000).toFixed(2)}`);
             return true;
         }
         if (!isBoom && isBearish && prevBearish) {
-            console.log(`🚀 ${sym}: TENDENCIA BAJISTA ESTABLECIDA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+            console.log(`🚀 ${sym}: TENDENCIA BAJISTA ESTABLECIDA CON FUERZA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]} | Fuerza: ${(st._force * 10000).toFixed(2)}`);
             return true;
         }
     }
@@ -195,7 +238,7 @@ function generateSignal(sym) {
 
     if (!isBullishTrend && !isBearishTrend) return;
 
-    // ✅ TP 1:1 - distancia = distancia entre EMA2 y EMA13
+    // ✅ TP 1:1
     const distancia = Math.abs(st.ema[2] - st.ema[13]);
     const tp1 = parseFloat((price + (isBoom ? distancia : -distancia)).toFixed(4));
     const slPrice = parseFloat((price - (isBoom ? distancia : -distancia)).toFixed(4));
@@ -207,7 +250,8 @@ function generateSignal(sym) {
         tp1,
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
-        status: 'PENDIENTE'
+        status: 'PENDIENTE',
+        force: st._force
     };
 
     st.lastSignal = signal;
@@ -217,12 +261,12 @@ function generateSignal(sym) {
     totalSignals++;
     lastSignalTime[sym] = Date.now();
 
-    console.log(`🔔 ${sym}: 📈 SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice} | TP 1:1`);
+    console.log(`🔔 ${sym}: 📈 SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice} | Fuerza: ${(st._force * 10000).toFixed(2)}`);
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     sendTelegramMessage(
-        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'} CON FUERZA\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n<b>Fuerza:</b> ${(st._force * 10000).toFixed(2)}%\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
     );
 }
 
@@ -250,9 +294,8 @@ function analyzeTrendStart(sym) {
         const trendStarted = detectTrendStart(sym);
         
         if (trendStarted && !st.lastSignal) {
-            // Verificar tiempo desde última señal
             const timeSinceLastSignal = Date.now() - lastSignalTime[sym];
-            if (timeSinceLastSignal < 30000) { // 30 segundos entre señales
+            if (timeSinceLastSignal < 30000) {
                 isProcessingQueue = false;
                 processNextInQueue();
                 return;
@@ -393,8 +436,8 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            console.log('🚀 KRAKEN PRO - SEÑALES ACTIVADAS (TP 1:1 | EMAs 2,5,13)');
-            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO AUTOMÁTICAMENTE\n✅ EMAs: 2,5,13\n✅ TP 1:1\n✅ Monitoreando 4 símbolos');
+            console.log('🚀 KRAKEN PRO - SEÑALES ACTIVADAS (FILTRO FUERZA)');
+            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO\n✅ EMAs: 2,5,13\n✅ TP 1:1\n✅ FILTRO FUERZA ACTIVADO\n✅ Monitoreando 4 símbolos');
         }, 5000);
     };
     ws.onclose = () => {
@@ -438,7 +481,7 @@ async function connectDeriv() {
 }
 
 // ==================== INICIO AUTOMÁTICO ====================
-console.log('🔄 Iniciando KRAKEN PRO ajustado...');
+console.log('🔄 Iniciando KRAKEN PRO con filtro de fuerza...');
 connectDeriv();
 
 // ==================== SERVIDOR WEB ====================
@@ -448,7 +491,7 @@ app.get('/', (req, res) => {
     res.send(`
         <html><body style="background:#060a18;color:#00d4ff;font-family:monospace;text-align:center;padding:50px;">
         <h1>🐙 KRAKEN PRO</h1>
-        <p>✅ TP 1:1 | EMAs 2,5,13</p>
+        <p>✅ TP 1:1 | EMAs 2,5,13 | FILTRO FUERZA</p>
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
         <p style="color:#10b981;">🚀 Funcionando automáticamente</p>
@@ -465,4 +508,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Servidor web en puerto ${PORT}`);
 });
 
-console.log('⏰ Bot iniciado automáticamente - TP 1:1 | EMAs 2,5,13');
+console.log('⏰ Bot iniciado automáticamente - FILTRO FUERZA ACTIVADO');
