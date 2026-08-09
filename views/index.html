@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
     <title>🐙 THE KRAKEN PRO — Deriv Edition</title>
     <style>
-        /* ===== ESTILOS COMPLETOS ===== */
         :root {
             --bg: #060a18;
             --panel: #0d1528;
@@ -54,6 +53,7 @@
         }
         .kraken-header .logo .badge { font-size: 0.45rem; background: var(--accent2); color: #fff; padding: 2px 8px; border-radius: 999px; -webkit-text-fill-color: #fff; font-weight: 700; }
         .kraken-header .logo .badge.tp { background: var(--gold); color: #000; -webkit-text-fill-color: #000; }
+        .kraken-header .logo .badge.force { background: var(--green); color: #000; -webkit-text-fill-color: #000; }
         .kraken-header .status-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.55rem; }
         .kraken-header .status-bar .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .dot.green { background: var(--green); box-shadow: 0 0 12px var(--green); }
@@ -65,7 +65,6 @@
         .stat-chip .num { font-size: 0.8rem; color: #fff; }
 
         .container { padding: 10px 14px; max-width: 1400px; margin: 0 auto; }
-
         .login-screen { display: none; }
 
         .btn {
@@ -132,6 +131,7 @@
         .value.blue { color: var(--accent); }
         .value.gold { color: var(--gold); }
         .value.purple { color: var(--accent2); }
+        .value.force { color: #ff6b6b; }
 
         .pairs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; margin-bottom: 10px; }
         .pair-card {
@@ -162,6 +162,17 @@
         .trend-badge.bearish { background: rgba(239, 68, 68, 0.2); color: var(--red); }
         .trend-badge.neutral { background: rgba(100, 116, 139, 0.2); color: var(--muted); }
         .trend-badge.start { background: rgba(245, 158, 11, 0.3); color: var(--gold); animation: pulse 1s infinite; }
+
+        .force-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.42rem;
+            font-weight: 700;
+        }
+        .force-badge.strong { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+        .force-badge.weak { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+        .force-badge.medium { background: rgba(245, 158, 11, 0.2); color: var(--gold); }
 
         .status-tag { font-size: 0.42rem; padding: 1px 6px; border-radius: 3px; }
         .status-tag.active { background: rgba(16, 185, 129, 0.2); color: var(--green); }
@@ -202,6 +213,7 @@
         .log-line.candle { color: #8b5cf6; font-weight: 600; }
         .log-line.trend { color: #f59e0b; font-weight: 600; }
         .log-line.start { color: #10b981; font-weight: 700; }
+        .log-line.force { color: #ff6b6b; font-weight: 700; }
 
         .history-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
         .history-panel .header { padding: 4px 10px; border-bottom: 1px solid var(--border); font-size: 0.55rem; color: var(--muted); }
@@ -264,6 +276,7 @@
             <h1>THE KRAKEN PRO</h1>
             <span class="badge">DERIV EDITION</span>
             <span class="badge tp">TP 1:1</span>
+            <span class="badge force">💪 FUERZA</span>
             <span class="badge" style="background:var(--green);color:#000;-webkit-text-fill-color:#000;">EMAs 2,5,13</span>
         </div>
         <div class="status-bar">
@@ -288,6 +301,7 @@
                     · <span style="color:var(--gold);">⏱ 1 MIN</span>
                     · <span style="color:var(--accent2);">📊 EMAs 2,5,13</span>
                     · <span style="color:var(--green);">🎯 TP 1:1</span>
+                    · <span style="color:#ff6b6b;">💪 FILTRO FUERZA</span>
                 </div>
                 <div class="status">
                     <span id="feed-latency">⚡ &lt;1s</span> ·
@@ -306,6 +320,7 @@
                 <span><span class="label">🔑</span> <span class="value" id="license-display" style="font-size:0.5rem;color:var(--gold);">KRKN-DEMO</span></span>
                 <span><span class="label">📊</span> <span class="value" id="info-emas" style="font-size:0.5rem;color:var(--green);">EMAs 2,5,13</span></span>
                 <span><span class="label">🎯</span> <span class="value" id="info-tp" style="font-size:0.5rem;color:var(--gold);">TP 1:1</span></span>
+                <span><span class="label">💪</span> <span class="value" id="info-force" style="font-size:0.5rem;color:#ff6b6b;">FILTRO FUERZA</span></span>
                 <button class="btn btn-warning btn-sm" onclick="switchAccount()">🔄 Cambiar</button>
             </div>
 
@@ -318,6 +333,7 @@
                 <div class="item"><div class="label">Símbolos</div><div class="value purple" id="stat-symbols">4</div></div>
                 <div class="item"><div class="label">EMAs</div><div class="value gold" id="stat-emas">2,5,13</div></div>
                 <div class="item"><div class="label">TP Ratio</div><div class="value green" id="stat-tp">1:1</div></div>
+                <div class="item"><div class="label">Filtro</div><div class="value force" id="stat-force">💪 FUERZA</div></div>
             </div>
 
             <!-- CONFIG -->
@@ -327,6 +343,7 @@
                     <div class="field"><label>EMAs</label><input type="text" value="2, 5, 13" disabled style="color:var(--green);"/></div>
                     <div class="field"><label>TP Ratio</label><input type="text" value="1:1" disabled style="color:var(--gold);"/></div>
                     <div class="field"><label>Temporalidad</label><input type="text" value="1 MIN" disabled style="color:var(--accent);"/></div>
+                    <div class="field"><label>Filtro Fuerza</label><input type="text" value="✅ ACTIVADO" disabled style="color:#ff6b6b;"/></div>
                     <div class="field"><label>Alertas MT5</label>
                         <select id="mt5-alerts">
                             <option value="all">Popup + Sonido + Push</option>
@@ -350,6 +367,7 @@
                 <span class="key" id="license-key-display">KRKN-DEMO-2024-0001</span>
                 <span style="color:var(--green);">✅ Activo</span>
                 <span style="color:var(--gold);margin-left:10px;">📊 EMAs 2,5,13 · TP 1:1</span>
+                <span style="color:#ff6b6b;margin-left:10px;">💪 FILTRO FUERZA</span>
                 <button class="btn btn-secondary btn-sm" onclick="showLicenseModal()" style="margin-left:auto;">Ver detalles</button>
             </div>
 
@@ -358,13 +376,13 @@
 
             <!-- HISTORY -->
             <div class="history-panel">
-                <div class="header">📋 HISTORIAL · <span style="color:var(--accent);">KRAKEN PRO</span> · <span style="color:var(--gold);">TP 1:1</span></div>
+                <div class="header">📋 HISTORIAL · <span style="color:var(--accent);">KRAKEN PRO</span> · <span style="color:var(--gold);">TP 1:1</span> · <span style="color:#ff6b6b;">💪 FUERZA</span></div>
                 <div style="overflow-x:auto;">
                     <table class="history-table">
                         <thead>
-                            <tr><th>Hora</th><th>Par</th><th>Dirección</th><th>Precio</th><th>TP1</th><th>SL</th><th>Estado</th></tr>
+                            <tr><th>Hora</th><th>Par</th><th>Dirección</th><th>Precio</th><th>TP1</th><th>SL</th><th>Fuerza</th><th>Estado</th></tr>
                         </thead>
-                        <tbody id="history-body"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr></tbody>
+                        <tbody id="history-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -405,6 +423,7 @@
                 <li><strong>03.</strong> TP Ratio: 1:1</li>
                 <li><strong>04.</strong> Señales al INICIO de tendencia</li>
                 <li><strong>05.</strong> SL basado en distancia EMA2-EMA13</li>
+                <li><strong>06.</strong> FILTRO FUERZA: Solo entra cuando hay momentum fuerte</li>
             </ul>
             <button class="btn btn-secondary btn-sm" onclick="closeModal('manual-modal')" style="width:100%;margin-top:8px;">Cerrar</button>
         </div>
@@ -430,11 +449,10 @@
 
     <script>
         // ============================================================
-        // 🐙 THE KRAKEN PRO — DERIV EDITION v5.0 - AUTO START
-        // EMAS: 2, 5, 13 · TP 1:1 · SL distancia EMA2-EMA13
+        // 🐙 THE KRAKEN PRO — DERIV EDITION v5.0
+        // EMAS: 2, 5, 13 · TP 1:1 · FILTRO FUERZA
         // ============================================================
 
-        // ==================== CONFIGURACIÓN ====================
         const REST_BASE = 'https://api.derivws.com';
         const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
         const EMA_PERIODS = [2, 5, 13];
@@ -444,7 +462,6 @@
         const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
         const LICENSE_KEY = 'KRKN-DEMO-2024-0001';
 
-        // ==================== ESTADO ====================
         let ws = null, signalsActive = false, dataLoaded = false, running = false;
         let balance = 0, totalSignals = 0, wins = 0, losses = 0;
         let pairState = {}, signalHistory = [];
@@ -466,7 +483,7 @@
                 _trendStarted: false, _trendStartPrice: null, _trendStartTime: null,
                 _trendAge: 0, _tp1Hit: false, _partialSLLogged: false,
                 _pendingEntry: false, _pendingEntryPrice: null, _pendingEntryTime: null,
-                _entryTaken: false
+                _entryTaken: false, _force: 0
             };
             EMA_PERIODS.forEach(period => {
                 pairState[p].ema[period] = null;
@@ -479,7 +496,6 @@
 
         function $(id) { return document.getElementById(id); }
 
-        // ==================== LOG ====================
         function log(msg, type) {
             const box = $('log-box');
             if (!box) { logBuffer.push({ msg, type }); return; }
@@ -498,7 +514,6 @@
             if (box.children.length > 300) box.removeChild(box.lastChild);
         }
 
-        // ==================== MODALES ====================
         function showDataFeedModal() { document.getElementById('datafeed-modal').classList.add('active'); }
         function showManualModal() { document.getElementById('manual-modal').classList.add('active'); }
         function showLicenseModal() { document.getElementById('license-modal').classList.add('active'); }
@@ -513,7 +528,6 @@
             updateSignalBadge();
         }
 
-        // ==================== TELEGRAM ====================
         async function sendTelegramMessage(message) {
             const token = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
             const chat = '-1003177595391';
@@ -551,7 +565,6 @@
             } catch (error) { log('❌ Error imagen: ' + error.message, 'error'); return false; }
         }
 
-        // ==================== UI ====================
         function buildUI() {
             $('pairs-grid').innerHTML = ALL_PAIRS.map(p => `
             <div class="pair-card" id="card-${p}">
@@ -645,9 +658,10 @@
                 if (st.lastSignal && !st.signalExpired) {
                     const sClass = st.lastSignal.type === 'MULTUP' ? 'signal-box' : 'signal-box bear';
                     const s = st.lastSignal;
+                    const forcePct = s.force ? (s.force * 10000).toFixed(2) : '0';
                     signalHtml = `
                 <div class="${sClass}">
-                  🐙 ${s.type === 'MULTUP' ? '🟢 COMPRA' : '🔴 VENTA'}
+                  🐙 ${s.type === 'MULTUP' ? '🟢 COMPRA' : '🔴 VENTA'} 💪 ${forcePct}%
                   <div style="font-size:0.4rem;color:var(--muted);">Entry: $${s.price.toFixed(4)}</div>
                   <div class="tp-badges">
                     <span class="tp-badge tp1">TP1: $${s.tp1.toFixed(4)}</span>
@@ -658,8 +672,11 @@
                     signalHtml = `<div class="signal-box expired">⏹ SEÑAL EXPIRADA</div>`;
                 } else if (st._trendStarted) {
                     signalHtml =
-                        `<div class="signal-box" style="border-color:var(--gold);color:var(--gold);background:rgba(245,158,11,0.1);">🚀 INICIO DE TENDENCIA ${trend.includes('BULLISH') ? 'ALCISTA' : 'BAJISTA'}</div>`;
+                        `<div class="signal-box" style="border-color:var(--gold);color:var(--gold);background:rgba(245,158,11,0.1);">🚀 INICIO DE TENDENCIA ${trend.includes('BULLISH') ? 'ALCISTA' : 'BAJISTA'} 💪 ${(st._force * 10000).toFixed(2)}%</div>`;
                 }
+
+                const forceClass = st._force >= 0.002 ? 'strong' : (st._force >= 0.001 ? 'medium' : 'weak');
+                const forceLabel = st._force >= 0.002 ? '🔥 FUERTE' : (st._force >= 0.001 ? '⚡ MEDIA' : '💨 DÉBIL');
 
                 body.innerHTML = `
               <div class="ema-row">
@@ -669,6 +686,7 @@
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2px;">
                 <span class="trend-badge ${cls}">${trend} ${trendLabel}</span>
+                <span class="force-badge ${forceClass}">💪 ${forceLabel}</span>
                 ${st._lastCandleClose ? `<span style="font-size:0.42rem;color:var(--green);">✅ Cierre: $${st._lastCandleClose.toFixed(4)}</span>` : ''}
                 ${st._trendStarted ? `<span style="font-size:0.42rem;color:var(--gold);">⏱ ${Math.round(st._trendAge/60)}m</span>` : ''}
               </div>
@@ -687,7 +705,7 @@
         function updateHistory() {
             const tb = $('history-body');
             if (!tb) return;
-            if (!signalHistory.length) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr>'; return; }
+            if (!signalHistory.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:10px;">Sin señales generadas</td></tr>'; return; }
             tb.innerHTML = signalHistory.slice(0, 30).map(s =>
                 `<tr>
               <td>${s.time}</td>
@@ -696,6 +714,7 @@
               <td>$${s.price.toFixed(4)}</td>
               <td style="color:var(--green);">$${s.tp1.toFixed(4)}</td>
               <td style="color:var(--red);">$${s.sl.toFixed(4)}</td>
+              <td style="color:#ff6b6b;">${s.force ? (s.force * 10000).toFixed(2) + '%' : 'N/A'}</td>
               <td style="color:${s.status === 'TP1 🎯' ? 'var(--green)' : s.status === 'SL 🛑' ? 'var(--red)' : 'var(--gold)'}">${s.status || 'PENDIENTE'}</td>
             </tr>`
             ).join('');
@@ -715,7 +734,6 @@
         function refreshBalance() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ balance: 1, subscribe: 1 })); }
         function round4(n) { return parseFloat(parseFloat(n).toFixed(4)); }
 
-        // ==================== EMAS ====================
         function calcEMAs(sym) {
             const st = pairState[sym];
             if (!st.candles || st.candles.length < 13) return;
@@ -735,30 +753,61 @@
             return round4(ema);
         }
 
-        // ==================== DETECTAR TENDENCIA ====================
+        function calculateForce(sym) {
+            const st = pairState[sym];
+            if (!st || st.ema[2] === null || st.ema[13] === null) return 0;
+            const ema2 = st.ema[2];
+            const ema13 = st.ema[13];
+            const distance = Math.abs(ema2 - ema13);
+            return distance / (ema13 + 0.0001);
+        }
+
+        function isForceValid(sym) {
+            const st = pairState[sym];
+            if (!st) return false;
+            const force = calculateForce(sym);
+            st._force = force;
+            const isValid = force >= 0.0015;
+            return isValid;
+        }
+
         function detectTrendStart(sym) {
             const st = pairState[sym];
             if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null) return false;
 
             const isBoom = sym.includes('BOOM');
-            const ema2 = st.ema[2];
-            const ema5 = st.ema[5];
-            const ema13 = st.ema[13];
+            const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
+            const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
+
+            if (!isBullish && !isBearish) {
+                st._pendingEntry = false;
+                return false;
+            }
+
+            if (!isForceValid(sym)) {
+                st._pendingEntry = true;
+                return false;
+            }
+
             const prevEma2 = st.prevEma[2];
             const prevEma5 = st.prevEma[5];
             const prevEma13 = st.prevEma[13];
 
             if (prevEma2 === null || prevEma5 === null || prevEma13 === null) return false;
 
-            const isBullish = ema2 > ema5 && ema5 > ema13;
-            const isBearish = ema2 < ema5 && ema5 < ema13;
-            const ema2CrossedAbove5 = (prevEma2 <= prevEma5) && (ema2 > ema5);
-            const ema5CrossedAbove13 = (prevEma5 <= prevEma13) && (ema5 > ema13);
-            const ema2CrossedBelow5 = (prevEma2 >= prevEma5) && (ema2 < ema5);
-            const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (ema5 < ema13);
+            const ema2CrossedAbove5 = (prevEma2 <= prevEma5) && (st.ema[2] > st.ema[5]);
+            const ema5CrossedAbove13 = (prevEma5 <= prevEma13) && (st.ema[5] > st.ema[13]);
+            const ema2CrossedBelow5 = (prevEma2 >= prevEma5) && (st.ema[2] < st.ema[5]);
+            const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (st.ema[5] < st.ema[13]);
 
-            if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) { return true; }
-            if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) { return true; }
+            if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) {
+                st._pendingEntry = false;
+                return true;
+            }
+            if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) {
+                st._pendingEntry = false;
+                return true;
+            }
 
             if (!st._trendStarted && !st.lastSignal) {
                 const prevBullish = prevEma2 > prevEma5 && prevEma5 > prevEma13;
@@ -769,7 +818,6 @@
             return false;
         }
 
-        // ==================== SEÑALES ====================
         function checkSignalExpiry(sym) {
             const st = pairState[sym];
             if (!st || !st.lastSignal || st.signalExpired) return;
@@ -835,7 +883,6 @@
                 const isBoom = sym.includes('BOOM'), price = st.price;
                 const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
                 const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
-                const currentTrend = isBullishTrend ? 'bullish' : (isBearishTrend ? 'bearish' : 'neutral');
 
                 const trendStarted = detectTrendStart(sym);
 
@@ -850,7 +897,8 @@
                     const signal = {
                         sym, type: isBoom && isBullishTrend ? 'MULTUP' : 'MULTDOWN',
                         price, tp1, sl: slPrice,
-                        time: new Date().toLocaleTimeString(), status: 'PENDIENTE'
+                        time: new Date().toLocaleTimeString(), status: 'PENDIENTE',
+                        force: st._force
                     };
 
                     st.lastSignal = signal;
@@ -867,8 +915,9 @@
 
                     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
                     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
+                    const forcePct = (st._force * 10000).toFixed(2);
                     sendTelegramMessage(
-                        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+                        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'} CON FUERZA\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n<b>Fuerza:</b> ${forcePct}%\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
                     );
                     isProcessingQueue = false; processNextInQueue(); return;
                 }
@@ -888,7 +937,6 @@
             }
         }
 
-        // ==================== WEBSOCKET ====================
         function scheduleReconnect() {
             if (reconnectTimer) clearTimeout(reconnectTimer);
             if (reconnectAttempts >= 20) { log('❌ Máx reintentos', 'error'); return; }
@@ -934,7 +982,7 @@
             if (ws) try { ws.close(); } catch (e) {}
 
             if (!url || useSimulatedData) {
-                log('🐙 Modo simulación activado', 'warn');
+                log('🐙 Modo simulación activado - FILTRO FUERZA', 'warn');
                 simulateDataLoading();
                 return;
             }
@@ -944,7 +992,7 @@
                 setConn(true);
                 reconnectAttempts = 0;
                 log('🐙 Conectado a Deriv', 'success');
-                log(`📊 EMAs: 2,5,13 · TP 1:1 · SL distancia EMA2-EMA13`, 'info');
+                log(`📊 EMAs: 2,5,13 · TP 1:1 · FILTRO FUERZA ACTIVADO`, 'info');
                 buildUI();
                 ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 ALL_PAIRS.forEach(p => {
@@ -978,9 +1026,8 @@
             }, 15000);
         }
 
-        // ==================== SIMULACIÓN ====================
         function simulateDataLoading() {
-            log('📊 Generando datos simulados...', 'info');
+            log('📊 Generando datos simulados... (FILTRO FUERZA)', 'info');
             const candleCount = 500;
             ALL_PAIRS.forEach((p, idx) => {
                 const st = pairState[p];
@@ -1009,7 +1056,7 @@
             if (dataLoadedCount >= ALL_PAIRS.length) {
                 dataLoaded = true;
                 buildUI();
-                log('🐙 KRAKEN PRO LISTO (MODO SIMULADO) - EMAs 2,5,13 · TP 1:1', 'success');
+                log('🐙 KRAKEN PRO LISTO (MODO SIMULADO) - EMAs 2,5,13 · TP 1:1 · FILTRO FUERZA', 'success');
                 updateSignalBadge();
                 if (refreshTimer) clearInterval(refreshTimer);
                 refreshTimer = setInterval(() => { if (signalsActive) simulateCandleClose(); }, 2000);
@@ -1039,7 +1086,6 @@
             });
         }
 
-        // ==================== MANEJO DE MENSAJES ====================
         function handleMsg(data) {
             if (data.error) {
                 const err = data.error.message || '';
@@ -1071,7 +1117,7 @@
                 updateCard(sym);
                 if (dataLoadedCount >= ALL_PAIRS.length) {
                     dataLoaded = true;
-                    log('🐙 KRAKEN PRO LISTO - EMAs 2,5,13 · TP 1:1', 'success');
+                    log('🐙 KRAKEN PRO LISTO - FILTRO FUERZA ACTIVADO', 'success');
                     updateSignalBadge();
                 }
                 return;
@@ -1105,7 +1151,6 @@
             }
         }
 
-        // ==================== AUTO START ====================
         function autoStartKraken() {
             if (autoStartDone) return;
             if (!dataLoaded && !useSimulatedData) { setTimeout(autoStartKraken, 1000); return; }
@@ -1116,8 +1161,8 @@
             $('btn-start').disabled = true;
             $('btn-stop').disabled = false;
 
-            log('🚀 KRAKEN PRO ACTIVADO AUTOMÁTICAMENTE - EMAs 2,5,13 · TP 1:1', 'start');
-            log(`📊 ${ALL_PAIRS.length} símbolos · EMAs: 2,5,13 · SL distancia EMA2-EMA13`, 'info');
+            log('🚀 KRAKEN PRO ACTIVADO - FILTRO FUERZA ACTIVADO', 'start');
+            log(`📊 ${ALL_PAIRS.length} símbolos · EMAs: 2,5,13 · TP 1:1 · FILTRO FUERZA`, 'info');
 
             const imageUrl = "https://i.postimg.cc/256thK2x/file-000000006dfc722f8bcb7e91ca1d9e6a.png";
             const caption = `🐙 *KRAKEN PRO ACTIVADO*\n\n` +
@@ -1125,7 +1170,7 @@
                 `📡 Monitoreando *${ALL_PAIRS.length}* símbolos (1min).\n` +
                 `📊 EMAs: 2,5,13\n` +
                 `🎯 TP Ratio: 1:1\n` +
-                `🛑 SL: distancia EMA2-EMA13\n` +
+                `💪 FILTRO FUERZA ACTIVADO\n` +
                 `🐙 *THE KRAKEN PRO*`;
             sendTelegramPhoto(imageUrl, caption);
 
@@ -1152,7 +1197,6 @@
             }, 2000);
         }
 
-        // ==================== CONTROLES ====================
         function stopSignals() {
             signalsActive = false;
             running = false;
@@ -1174,18 +1218,18 @@
             location.reload();
         }
 
-        // ==================== INICIO ====================
         document.addEventListener('DOMContentLoaded', function() {
-            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0', 'signal');
-            log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13 · TP 1:1', 'start');
-            log(`📊 ${ALL_PAIRS.length} símbolos · 1min · SL distancia EMA2-EMA13`, 'info');
+            log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - FILTRO FUERZA', 'signal');
+            log('⚡ Señales solo con FUERZA · EMAs: 2,5,13 · TP 1:1', 'start');
+            log(`📊 ${ALL_PAIRS.length} símbolos · 1min · FILTRO FUERZA ACTIVADO`, 'info');
             log('📨 Telegram integrado', 'telegram');
             log('🔔 Alertas MT5: Popup + Sonido + Push', 'alert');
             $('stat-symbols').textContent = ALL_PAIRS.length;
             $('stat-emas').textContent = '2,5,13';
             $('stat-tp').textContent = '1:1';
-            $('stat-analysis').textContent = 'INICIO TENDENCIA';
-            $('stat-analysis').className = 'value green';
+            $('stat-force').textContent = '💪 FUERZA';
+            $('stat-analysis').textContent = 'INICIO TENDENCIA + FUERZA';
+            $('stat-analysis').className = 'value force';
             $('feed-tier').textContent = dataFeedTier;
             $('license-key-display').textContent = licenseKey;
             $('modal-license-key').textContent = licenseKey;
