@@ -2,14 +2,14 @@ const express = require('express');
 const WebSocket = require('ws');
 const app = express();
 
-console.log('🐙 THE KRAKEN PRO — Deriv Edition - CORREGIDO');
-console.log('⚡ Toma entrada cuando EMAs estén ALINEADAS (1H)');
+console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - AJUSTADO');
+console.log('⚡ Señales al INICIO de tendencia · EMAs: 2,5,13 · TP 1:1');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
-const TIMEFRAME = 3600; // 1 HORA
+const EMA_PERIODS = [2, 5, 13]; // ✅ SOLO 3 EMAS
+const TIMEFRAME = 60; // 1 minuto
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -55,7 +55,6 @@ ALL_PAIRS.forEach(p => {
         _tp1Hit: false,
         _partialSLLogged: false,
         _pendingEntry: false,
-        _ema144Aligned: false,
         _entryTaken: false
     };
     EMA_PERIODS.forEach(period => {
@@ -80,8 +79,6 @@ function resetPairState(sym) {
     st._tp1Hit = false;
     st._partialSLLogged = false;
     st._pendingEntry = false;
-    st._ema144Aligned = false;
-    st._entryTaken = false;
     st.waitingForNewTrend = false;
     st.lastTrend = null;
 }
@@ -120,70 +117,69 @@ function calculateEMA(prices, period) {
 
 function calcEMAs(sym) {
     const st = pairState[sym];
-    if (!st.candles || st.candles.length < 144) return;
+    if (!st.candles || st.candles.length < 13) return;
     const prices = st.candles.slice();
     EMA_PERIODS.forEach(period => {
         st.ema[period] = calculateEMA(prices, period);
     });
 }
 
-// ==================== DETECTAR TENDENCIA (CORREGIDO) ====================
+// ==================== DETECTAR TENDENCIA ====================
 function detectTrendStart(sym) {
     const st = pairState[sym];
-    if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null ||
-        st.ema[34] === null || st.ema[55] === null || st.ema[89] === null || st.ema[144] === null) return false;
+    if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null) return false;
 
     const isBoom = sym.includes('BOOM');
     
-    // ✅ VERIFICAR QUE LAS EMAS ESTÉN ALINEADAS (NO CRUCE)
-    const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] &&
-                      st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] &&
-                      st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-                      
-    const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] &&
-                      st.ema[13] < st.ema[34] && st.ema[34] < st.ema[55] &&
-                      st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+    // Verificar alineación de las 3 EMAs
+    const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
+    const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
 
     if (!isBullish && !isBearish) {
         st._pendingEntry = false;
         return false;
     }
 
-    // ✅ VERIFICAR EMA144 ALINEADA
-    const ema144Aligned = isEMA144Aligned(sym);
-    if (!ema144Aligned) {
-        st._pendingEntry = true;
-        return false;
+    // Verificar cruce
+    const prevEma2 = st.prevEma[2];
+    const prevEma5 = st.prevEma[5];
+    const prevEma13 = st.prevEma[13];
+
+    if (prevEma2 === null || prevEma5 === null || prevEma13 === null) return false;
+
+    const ema2CrossedAbove5 = (prevEma2 <= prevEma5) && (st.ema[2] > st.ema[5]);
+    const ema5CrossedAbove13 = (prevEma5 <= prevEma13) && (st.ema[5] > st.ema[13]);
+    const ema2CrossedBelow5 = (prevEma2 >= prevEma5) && (st.ema[2] < st.ema[5]);
+    const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (st.ema[5] < st.ema[13]);
+
+    // Detectar inicio de tendencia por cruce
+    if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) {
+        console.log(`🚀 ${sym}: INICIO TENDENCIA ALCISTA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+        st._pendingEntry = false;
+        return true;
+    }
+    
+    if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) {
+        console.log(`🚀 ${sym}: INICIO TENDENCIA BAJISTA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+        st._pendingEntry = false;
+        return true;
     }
 
-    // ✅ EVITAR SEÑALES DUPLICADAS
-    if (st.lastSignal && !st.signalExpired) {
-        return false;
+    // Si ya hay tendencia establecida, continuar
+    if (!st._trendStarted && !st.lastSignal) {
+        const prevBullish = prevEma2 > prevEma5 && prevEma5 > prevEma13;
+        const prevBearish = prevEma2 < prevEma5 && prevEma5 < prevEma13;
+        
+        if (isBoom && isBullish && prevBullish) {
+            console.log(`🚀 ${sym}: TENDENCIA ALCISTA ESTABLECIDA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+            return true;
+        }
+        if (!isBoom && isBearish && prevBearish) {
+            console.log(`🚀 ${sym}: TENDENCIA BAJISTA ESTABLECIDA | EMA2: ${st.ema[2]} | EMA5: ${st.ema[5]} | EMA13: ${st.ema[13]}`);
+            return true;
+        }
     }
 
-    // ✅ EVITAR SEÑALES DEMASIADO CERCANAS (5 minutos entre señales)
-    const timeSinceLastSignal = Date.now() - lastSignalTime[sym];
-    if (timeSinceLastSignal < 300000) { // 5 minutos
-        return false;
-    }
-
-    console.log(`🚀 ${sym}: SEÑAL CONFIRMADA | ${isBullish ? 'ALCISTA' : 'BAJISTA'} | EMA144 ✅`);
-    st._pendingEntry = false;
-    return true;
-}
-
-function isEMA144Aligned(sym) {
-    const st = pairState[sym];
-    if (!st || st.ema[144] === null || st.ema[34] === null) return false;
-    const isBoom = sym.includes('BOOM');
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] &&
-                           st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] &&
-                           st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] &&
-                           st.ema[13] < st.ema[34] && st.ema[34] < st.ema[55] &&
-                           st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
-    if (isBoom && isBullishTrend) return st.ema[144] < st.ema[34];
-    if (!isBoom && isBearishTrend) return st.ema[144] > st.ema[34];
     return false;
 }
 
@@ -194,20 +190,15 @@ function generateSignal(sym) {
 
     const isBoom = sym.includes('BOOM');
     const price = st.price;
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] &&
-                           st.ema[13] > st.ema[34] && st.ema[34] > st.ema[55] &&
-                           st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] &&
-                           st.ema[13] < st.ema[34] && st.ema[34] < st.ema[55] &&
-                           st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
+    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
 
     if (!isBullishTrend && !isBearishTrend) return;
 
-    // ✅ TP1 = 1 (ratio 1:1)
-    const tpRatio = 1;
-    const distancia = Math.abs(price - st.ema[34]);
-    const tp1 = parseFloat((price + (isBoom ? distancia * tpRatio : -distancia * tpRatio)).toFixed(4));
-    const slPrice = parseFloat(st.ema[144].toFixed(4));
+    // ✅ TP 1:1 - distancia = distancia entre EMA2 y EMA13
+    const distancia = Math.abs(st.ema[2] - st.ema[13]);
+    const tp1 = parseFloat((price + (isBoom ? distancia : -distancia)).toFixed(4));
+    const slPrice = parseFloat((price - (isBoom ? distancia : -distancia)).toFixed(4));
 
     const signal = {
         sym,
@@ -226,12 +217,12 @@ function generateSignal(sym) {
     totalSignals++;
     lastSignalTime[sym] = Date.now();
 
-    console.log(`🔔 ${sym}: SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice}`);
+    console.log(`🔔 ${sym}: 📈 SEÑAL ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice} | TP 1:1`);
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     sendTelegramMessage(
-        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>Filtro EMA144:</b> ✅ ALINEADA\n<b>Temporalidad:</b> ⏱ 1 HORA\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1 (1:1):</b> $${signal.tp1} 🎯\n<b>SL (EMA144):</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
+        `${emoji} <b>🐙 SEÑAL KRAKEN PRO</b>\n\n<b>Par:</b> ${signal.sym}\n<b>Dirección:</b> ${dir}\n<b>Momento:</b> 🚀 INICIO DE TENDENCIA ${isBullishTrend ? 'ALCISTA' : 'BAJISTA'}\n<b>EMAs:</b> 2,5,13\n<b>TP Ratio:</b> 1:1\n\n<b>Entrada:</b> $${signal.price}\n<b>TP1:</b> $${signal.tp1} 🎯\n<b>SL:</b> $${signal.sl} 🛑\n\n⏰ ${signal.time}`
     );
 }
 
@@ -259,6 +250,13 @@ function analyzeTrendStart(sym) {
         const trendStarted = detectTrendStart(sym);
         
         if (trendStarted && !st.lastSignal) {
+            // Verificar tiempo desde última señal
+            const timeSinceLastSignal = Date.now() - lastSignalTime[sym];
+            if (timeSinceLastSignal < 30000) { // 30 segundos entre señales
+                isProcessingQueue = false;
+                processNextInQueue();
+                return;
+            }
             generateSignal(sym);
             isProcessingQueue = false;
             processNextInQueue();
@@ -346,7 +344,7 @@ function handleMsg(data) {
         st._lastCandleClose = st.price;
 
         dataLoaded = true;
-        console.log(`📊 ${sym}: ${st.candles.length} velas cargadas (1H)`);
+        console.log(`📊 ${sym}: ${st.candles.length} velas cargadas`);
         return;
     }
 
@@ -366,7 +364,7 @@ function handleMsg(data) {
                 candleCloseProcessed[sym] = true;
                 EMA_PERIODS.forEach(period => { st.prevEma[period] = st.ema[period]; });
                 st.candles.push(st.price);
-                if (st.candles.length > 100) st.candles.shift();
+                if (st.candles.length > 500) st.candles.shift();
                 calcEMAs(sym);
                 st._lastCandleClose = st.price;
 
@@ -395,8 +393,8 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            console.log('🚀 KRAKEN PRO ACTIVADO - 1H | TP1 = 1 | CORREGIDO');
-            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO (CORREGIDO)\n✅ Sistema en marcha\n📊 Temporalidad: 1 HORA\n🎯 TP1 = 1 (1:1)\n📊 Monitoreando 4 símbolos');
+            console.log('🚀 KRAKEN PRO - SEÑALES ACTIVADAS (TP 1:1 | EMAs 2,5,13)');
+            sendTelegramMessage('🐙 KRAKEN PRO ACTIVADO AUTOMÁTICAMENTE\n✅ EMAs: 2,5,13\n✅ TP 1:1\n✅ Monitoreando 4 símbolos');
         }, 5000);
     };
     ws.onclose = () => {
@@ -426,12 +424,12 @@ async function connectDeriv() {
         const accResp = await fetch(`${REST_BASE}/trading/v1/options/accounts`, { headers });
         if (!accResp.ok) throw new Error(`Error ${accResp.status}`);
         const allAccounts = (await accResp.json()).data || [];
-        const account = allAccounts.find(a => a.account_type === 'demo') || allAccounts[0];
+        const account = allAccounts.find(a => a.account_type === 'real') || allAccounts[0];
         const otpResp = await fetch(`${REST_BASE}/trading/v1/options/accounts/${account.account_id}/otp`, { method: 'POST', headers });
         if (!otpResp.ok) throw new Error('Error OTP');
         const d = await otpResp.json();
         if (!d.data?.url) throw new Error('Sin URL');
-        console.log('✅ Credenciales OK, conectando WebSocket...');
+        console.log(`✅ Credenciales OK, conectando WebSocket... (${account.account_type.toUpperCase()})`);
         openWS(d.data.url);
     } catch (e) {
         console.log(`⚠️ Error conexión: ${e.message}`);
@@ -440,7 +438,7 @@ async function connectDeriv() {
 }
 
 // ==================== INICIO AUTOMÁTICO ====================
-console.log('🔄 Iniciando KRAKEN PRO - CORREGIDO (EMAs alineadas 1H)...');
+console.log('🔄 Iniciando KRAKEN PRO ajustado...');
 connectDeriv();
 
 // ==================== SERVIDOR WEB ====================
@@ -449,19 +447,17 @@ app.use(express.static('public'));
 app.get('/', (req, res) => {
     res.send(`
         <html><body style="background:#060a18;color:#00d4ff;font-family:monospace;text-align:center;padding:50px;">
-        <h1>🐙 KRAKEN PRO - CORREGIDO</h1>
-        <p>✅ Bot activo en modo servidor</p>
-        <p>📊 Temporalidad: 1 HORA</p>
-        <p>🎯 TP1 = 1 (ratio 1:1)</p>
+        <h1>🐙 KRAKEN PRO</h1>
+        <p>✅ TP 1:1 | EMAs 2,5,13</p>
         <p>📡 Señales generadas: ${totalSignals}</p>
         <p>🎯 Aciertos: ${wins} | Fallos: ${losses}</p>
-        <p style="color:#10b981;">🚀 Toma entrada con EMAS ALINEADAS</p>
+        <p style="color:#10b981;">🚀 Funcionando automáticamente</p>
         </body></html>
     `);
 });
 
 app.get('/ping', (req, res) => {
-    res.status(200).send('🐙 KRAKEN PRO - CORREGIDO ' + new Date().toISOString());
+    res.status(200).send('🐙 KRAKEN PRO - Activo ' + new Date().toISOString());
 });
 
 const PORT = process.env.PORT || 3000;
@@ -469,4 +465,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Servidor web en puerto ${PORT}`);
 });
 
-console.log('⏰ Bot iniciado - CORREGIDO (toma entrada con EMAs alineadas)');
+console.log('⏰ Bot iniciado automáticamente - TP 1:1 | EMAs 2,5,13');
