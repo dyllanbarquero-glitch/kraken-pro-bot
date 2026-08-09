@@ -2,15 +2,15 @@ const express = require('express');
 const WebSocket = require('ws');
 const app = express();
 
-console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - FILTROS MÚLTIPLES');
-console.log('⚡ Filtros: FUERZA + VOLUMEN + VELAS + MÚLTIPLES MARCOS');
+console.log('🐙 THE KRAKEN PRO — Deriv Edition v5.0 - 4 FILTROS');
+console.log('⚡ FILTROS: FUERZA + VOLUMEN + VELA + 5min');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13];
-const TIMEFRAME = 60; // 1 minuto
-const TIMEFRAME_5MIN = 300; // 5 minutos
+const TIMEFRAME = 60;
+const TIMEFRAME_5MIN = 300;
 
 // Credenciales
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -47,6 +47,7 @@ ALL_PAIRS.forEach(p => {
         candles: [],
         candles5min: [],
         loaded: false,
+        loaded5min: false,
         lastTrend: null,
         waitingForNewTrend: false,
         lastSignal: null,
@@ -145,7 +146,7 @@ function calcEMAs5min(sym) {
     return ema5min;
 }
 
-// ==================== FILTRO: FUERZA ====================
+// ==================== FILTROS ====================
 function calculateForce(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[13] === null) return 0;
@@ -160,89 +161,57 @@ function isForceValid(sym) {
     if (!st) return false;
     const force = calculateForce(sym);
     st._force = force;
-    const isValid = force >= 0.0015;
-    return isValid;
+    return force >= 0.0015;
 }
 
-// ==================== FILTRO: VOLUMEN ====================
 function hasVolume(sym) {
     const st = pairState[sym];
     if (!st || !st.candles || st.candles.length < 20) return false;
-    
-    // Simular volumen (en Deriv no hay volumen real, usamos volatilidad)
     const prices = st.candles.slice(-20);
     const avgRange = prices.reduce((sum, p, i, arr) => {
         if (i === 0) return 0;
         return sum + Math.abs(p - arr[i-1]);
     }, 0) / (prices.length - 1);
-    
     const currentRange = st.candles.length > 1 ? 
         Math.abs(st.candles[st.candles.length - 1] - st.candles[st.candles.length - 2]) : 0;
-    
     st._volume = currentRange / (avgRange + 0.0001);
-    const isValid = st._volume > 1.2; // Volumen > 1.2x promedio
-    
-    return isValid;
+    return st._volume > 1.2;
 }
 
-// ==================== FILTRO: VELAS (CUERPO FUERTE) ====================
 function hasStrongCandle(sym) {
     const st = pairState[sym];
     if (!st || !st.candles || st.candles.length < 20) return false;
-    
     const prices = st.candles.slice(-20);
     const avgBody = prices.reduce((sum, p, i, arr) => {
         if (i === 0) return 0;
         return sum + Math.abs(p - arr[i-1]);
     }, 0) / (prices.length - 1);
-    
     const currentBody = st.candles.length > 1 ? 
         Math.abs(st.candles[st.candles.length - 1] - st.candles[st.candles.length - 2]) : 0;
-    
     st._candleBody = currentBody / (avgBody + 0.0001);
-    const isValid = st._candleBody > 1.8; // Cuerpo > 1.8x promedio
-    
-    return isValid;
+    return st._candleBody > 1.8;
 }
 
-// ==================== FILTRO: MÚLTIPLES MARCOS (1min y 5min) ====================
 function checkMultiTimeframe(sym) {
     const st = pairState[sym];
-    if (!st || !st.candles5min || st.candles5min.length < 13) return true; // Si no hay datos 5min, permitir
-    
+    if (!st || !st.candles5min || st.candles5min.length < 13) return true;
     const ema5min = calcEMAs5min(sym);
-    if (!ema5min || ema5min[2] === null || ema5min[5] === null || ema5min[13] === null) return true;
-    
-    const isBoom = sym.includes('BOOM');
+    if (!ema5min || ema5min[2] === null) return true;
     const isBullish5min = ema5min[2] > ema5min[5] && ema5min[5] > ema5min[13];
     const isBearish5min = ema5min[2] < ema5min[5] && ema5min[5] < ema5min[13];
-    
-    // Verificar tendencia en 1min
     const isBullish1min = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
     const isBearish1min = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
-    
-    // ✅ La tendencia en 5min debe coincidir con la de 1min
-    if (isBullish1min && !isBullish5min) {
-        console.log(`⏳ ${sym}: 5min NO confirma tendencia alcista`);
-        return false;
-    }
-    if (isBearish1min && !isBearish5min) {
-        console.log(`⏳ ${sym}: 5min NO confirma tendencia bajista`);
-        return false;
-    }
-    
-    console.log(`✅ ${sym}: 5min confirma tendencia`);
+    if (isBullish1min && !isBullish5min) return false;
+    if (isBearish1min && !isBearish5min) return false;
     return true;
 }
 
-// ==================== DETECTAR TENDENCIA (CON TODOS LOS FILTROS) ====================
+// ==================== DETECTAR TENDENCIA ====================
 function detectTrendStart(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null) return false;
 
     const isBoom = sym.includes('BOOM');
-    
-    // Verificar tendencia en 1min
     const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13];
     const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13];
 
@@ -251,31 +220,11 @@ function detectTrendStart(sym) {
         return false;
     }
 
-    // ✅ FILTRO 1: FUERZA
-    if (!isForceValid(sym)) {
-        st._pendingEntry = true;
-        return false;
-    }
+    if (!isForceValid(sym)) { st._pendingEntry = true; return false; }
+    if (!hasVolume(sym)) { st._pendingEntry = true; return false; }
+    if (!hasStrongCandle(sym)) { st._pendingEntry = true; return false; }
+    if (!checkMultiTimeframe(sym)) { st._pendingEntry = true; return false; }
 
-    // ✅ FILTRO 2: VOLUMEN
-    if (!hasVolume(sym)) {
-        st._pendingEntry = true;
-        return false;
-    }
-
-    // ✅ FILTRO 3: CUERPO DE VELA
-    if (!hasStrongCandle(sym)) {
-        st._pendingEntry = true;
-        return false;
-    }
-
-    // ✅ FILTRO 4: MÚLTIPLES MARCOS (1min y 5min)
-    if (!checkMultiTimeframe(sym)) {
-        st._pendingEntry = true;
-        return false;
-    }
-
-    // Verificar cruce
     const prevEma2 = st.prevEma[2];
     const prevEma5 = st.prevEma[5];
     const prevEma13 = st.prevEma[13];
@@ -287,34 +236,19 @@ function detectTrendStart(sym) {
     const ema2CrossedBelow5 = (prevEma2 >= prevEma5) && (st.ema[2] < st.ema[5]);
     const ema5CrossedBelow13 = (prevEma5 >= prevEma13) && (st.ema[5] < st.ema[13]);
 
-    // Detectar inicio de tendencia por cruce CON todos los filtros
     if (isBoom && ema2CrossedAbove5 && ema5CrossedAbove13) {
-        console.log(`🚀 ${sym}: ✅ TODOS LOS FILTROS | ALCISTA | FUERZA:${(st._force*10000).toFixed(2)} | VOL:${st._volume.toFixed(2)} | VELA:${st._candleBody.toFixed(2)}`);
-        st._pendingEntry = false;
-        return true;
+        st._pendingEntry = false; return true;
     }
-    
     if (!isBoom && ema2CrossedBelow5 && ema5CrossedBelow13) {
-        console.log(`🚀 ${sym}: ✅ TODOS LOS FILTROS | BAJISTA | FUERZA:${(st._force*10000).toFixed(2)} | VOL:${st._volume.toFixed(2)} | VELA:${st._candleBody.toFixed(2)}`);
-        st._pendingEntry = false;
-        return true;
+        st._pendingEntry = false; return true;
     }
 
-    // Si ya hay tendencia establecida CON todos los filtros
     if (!st._trendStarted && !st.lastSignal) {
         const prevBullish = prevEma2 > prevEma5 && prevEma5 > prevEma13;
         const prevBearish = prevEma2 < prevEma5 && prevEma5 < prevEma13;
-        
-        if (isBoom && isBullish && prevBullish) {
-            console.log(`🚀 ${sym}: ✅ TENDENCIA ALCISTA ESTABLECIDA | FUERZA:${(st._force*10000).toFixed(2)} | VOL:${st._volume.toFixed(2)} | VELA:${st._candleBody.toFixed(2)}`);
-            return true;
-        }
-        if (!isBoom && isBearish && prevBearish) {
-            console.log(`🚀 ${sym}: ✅ TENDENCIA BAJISTA ESTABLECIDA | FUERZA:${(st._force*10000).toFixed(2)} | VOL:${st._volume.toFixed(2)} | VELA:${st._candleBody.toFixed(2)}`);
-            return true;
-        }
+        if (isBoom && isBullish && prevBullish) { return true; }
+        if (!isBoom && isBearish && prevBearish) { return true; }
     }
-
     return false;
 }
 
@@ -330,7 +264,6 @@ function generateSignal(sym) {
 
     if (!isBullishTrend && !isBearishTrend) return;
 
-    // TP 1:1
     const distancia = Math.abs(st.ema[2] - st.ema[13]);
     const tp1 = parseFloat((price + (isBoom ? distancia : -distancia)).toFixed(4));
     const slPrice = parseFloat((price - (isBoom ? distancia : -distancia)).toFixed(4));
@@ -376,7 +309,7 @@ function analyzeTrendStart(sym) {
 
     try {
         const st = pairState[sym];
-        if (!st || !st.loaded || st.ema[2] === null) {
+        if (!st || st.ema[2] === null) {
             isProcessingQueue = false;
             processNextInQueue();
             return;
@@ -488,6 +421,7 @@ function handleMsg(data) {
             console.log(`📊 ${sym}: ${st.candles.length} velas 1min cargadas`);
         } else if (granularity === TIMEFRAME_5MIN) {
             st.candles5min = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
+            st.loaded5min = true;
             st._lastCandleClose5min = st.candles5min[st.candles5min.length - 1];
             console.log(`📊 ${sym}: ${st.candles5min.length} velas 5min cargadas`);
         }
@@ -506,7 +440,6 @@ function handleMsg(data) {
         const candleKey = `${now.getHours()}:${minutes}`;
         const candleKey5min = `${now.getHours()}:${Math.floor(minutes / 5) * 5}`;
 
-        // 1min candle close
         if (lastCandleKey[sym] && lastCandleKey[sym] !== candleKey) {
             if (!candleCloseProcessed[sym]) {
                 candleCloseProcessed[sym] = true;
@@ -525,7 +458,6 @@ function handleMsg(data) {
         }
         lastCandleKey[sym] = candleKey;
 
-        // 5min candle close
         if (lastCandleKey5min[sym] && lastCandleKey5min[sym] !== candleKey5min) {
             if (!candleCloseProcessed5min[sym]) {
                 candleCloseProcessed5min[sym] = true;
@@ -537,8 +469,6 @@ function handleMsg(data) {
             candleCloseProcessed5min[sym] = false;
         }
         lastCandleKey5min[sym] = candleKey5min;
-
-        updateCard(sym);
     }
 }
 
@@ -550,9 +480,7 @@ function openWS(url) {
         console.log('✅ Conectado a Deriv WebSocket');
         const candleCount = 500;
         ALL_PAIRS.forEach(p => {
-            // 1min candles
             ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
-            // 5min candles
             ws.send(JSON.stringify({ ticks_history: p, count: 100, end: 'latest', granularity: TIMEFRAME_5MIN, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
         });
