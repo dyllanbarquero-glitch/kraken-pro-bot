@@ -39,6 +39,7 @@ let analysisQueue = [];
 let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
+let serverStarted = false;
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -78,7 +79,7 @@ async function sendTelegramMessage(message) {
         });
         const result = await response.json();
         if (result.ok) {
-            console.log('📨 Mensaje enviado a Telegram');
+            console.log('📨 Mensaje enviado a Telegram ✅');
             return true;
         }
         console.log('❌ Error Telegram:', result.description || 'Error desconocido');
@@ -529,6 +530,21 @@ async function connectDeriv() {
         scheduleReconnect();
     }
 }
+
+// ==================== INICIO ====================
+addLog('🔄 Iniciando KRAKEN PRO 2.0...', 'info');
+
+// ✅ Enviar mensaje de inicio inmediato a Telegram
+setTimeout(() => {
+    const startMsg = `🐙 <b>KRAKEN PRO 2.0 INICIADO</b>\n\n` +
+        `🔄 Conectando a Deriv...\n` +
+        `⏳ El bot se activará automáticamente\n` +
+        `📡 ${ALL_PAIRS.length} símbolos monitoreados\n\n` +
+        `⏰ ${new Date().toLocaleString()}`;
+    sendTelegramMessage(startMsg);
+}, 3000);
+
+connectDeriv();
 
 // ==================== SERVIDOR WEB ====================
 app.use(express.static('public'));
