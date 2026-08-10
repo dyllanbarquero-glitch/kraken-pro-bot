@@ -5,7 +5,7 @@ const app = express();
 // Servir archivos estáticos
 app.use(express.static('public'));
 
-// Ruta principal - SIRVE EL BOT
+// Ruta principal - SIRVE EL KRAKEN PRO 2.0
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
@@ -17,8 +17,9 @@ app.get('/ping', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log('🌐 Servidor web en puerto ' + PORT);
+    console.log('🐙 KRAKEN PRO 2.0 ejecutándose en puerto ' + PORT);
 });
 
 console.log('🐙 KRAKEN PRO 2.0 - Servidor iniciado');
-console.log('⏰ Ejecutándose automáticamente 24/7');
+console.log('⭐ Sistema de puntuación · Pullback · RSI · ADX');
+console.log('🔒 BOOM → SOLO COMPRAS | CRASH → SOLO VENTAS');
