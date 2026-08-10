@@ -4,14 +4,15 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO 2.0 - BACKEND 24/7');
+console.log('📊 EMAs: 2,5,13,34');
 console.log('🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const EMA_PERIODS = [2, 5, 13, 34, 55, 89, 144];
+const EMA_PERIODS = [2, 5, 13, 34]; // ✅ SOLO 4 EMAS
 const TIMEFRAME = 60;
-const MIN_SCORE = 3;
+const MIN_SCORE = 7;
 const COOLDOWN_MINUTES = 5;
 const MAX_DISTANCE_EMA13 = 2.0;
 const ADX_THRESHOLD = 20;
@@ -48,7 +49,6 @@ let analysisQueue = [];
 let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
-let serverStarted = false;
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -58,12 +58,12 @@ ALL_PAIRS.forEach(p => {
         _trendStarted: false, _trendStartTime: null, _trendAge: 0,
         _tp1Hit: false, _pendingEntry: false, _rsi: 50, _adx: 20,
         _pullbackDetected: false, _candleConfirmed: false, _lastCandleOpen: null,
-        _lastScore: 0, _lastScoreTime: 0, _force: 0, _volume: 0, _candleBody: 0,
+        _lastScore: 0, _lastScoreTime: 0,
         // 🛡️ Protección de ganancias
         _entryPrice: null,
         _tp1Price: null,
         _slPrice: null,
-        _profitProtectionLevel: 0, // 0=nada, 1=BE, 2=30%, 3=60%
+        _profitProtectionLevel: 0,
         _lastSLUpdate: 0
     };
     EMA_PERIODS.forEach(period => {
@@ -118,7 +118,7 @@ function calculateEMA(prices, period) {
 
 function calcEMAs(sym) {
     const st = pairState[sym];
-    if (!st.candles || st.candles.length < 144) return;
+    if (!st.candles || st.candles.length < 34) return;
     const prices = st.candles.slice();
     EMA_PERIODS.forEach(period => {
         st.ema[period] = calculateEMA(prices, period);
@@ -164,10 +164,8 @@ function detectPullback(sym) {
     if (!st || st.candles.length < 10 || st.ema[5] === null || st.ema[13] === null) return false;
     const price = st.price;
     const ema5 = st.ema[5], ema13 = st.ema[13];
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34] &&
-        st.ema[34] > st.ema[55] && st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34] &&
-        st.ema[34] < st.ema[55] && st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
     if (!isBullishTrend && !isBearishTrend) return false;
     if (isBullishTrend) {
         const nearEMA5 = Math.abs(price - ema5) / ema5 * 100 < 0.5;
@@ -186,10 +184,8 @@ function detectPullback(sym) {
 function checkCandleConfirmation(sym) {
     const st = pairState[sym];
     if (!st || st._lastCandleOpen === null || st._lastCandleClose === null) return false;
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34] &&
-        st.ema[34] > st.ema[55] && st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34] &&
-        st.ema[34] < st.ema[55] && st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
     if (isBullishTrend) {
         const closeAboveOpen = st._lastCandleClose > st._lastCandleOpen;
         const closeAboveEMA5 = st._lastCandleClose > st.ema[5];
@@ -210,17 +206,15 @@ function checkCandleConfirmation(sym) {
 // ==================== SISTEMA DE PUNTUACIÓN ====================
 function calculateKrakenScore(sym) {
     const st = pairState[sym];
-    if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null ||
-        st.ema[34] === null || st.ema[55] === null || st.ema[89] === null || st.ema[144] === null) return 0;
+    if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null || st.ema[34] === null) return 0;
     let score = 0;
     const isBoom = sym.includes('BOOM');
     const price = st.price;
-    const ema2 = st.ema[2], ema5 = st.ema[5], ema13 = st.ema[13], ema34 = st.ema[34],
-        ema55 = st.ema[55], ema89 = st.ema[89], ema144 = st.ema[144];
+    const ema2 = st.ema[2], ema5 = st.ema[5], ema13 = st.ema[13], ema34 = st.ema[34];
     const prevEma13 = st.prevEma[13], prevEma34 = st.prevEma[34];
     const rsi = st._rsi || 50, adx = st._adx || 20;
-    const isBullishTrend = ema2 > ema5 && ema5 > ema13 && ema13 > ema34 && ema34 > ema55 && ema55 > ema89 && ema89 > ema144;
-    const isBearishTrend = ema2 < ema5 && ema5 < ema13 && ema13 < ema34 && ema34 < ema55 && ema55 < ema89 && ema89 < ema144;
+    const isBullishTrend = ema2 > ema5 && ema5 > ema13 && ema13 > ema34;
+    const isBearishTrend = ema2 < ema5 && ema5 < ema13 && ema13 < ema34;
     if (isBullishTrend || isBearishTrend) score++;
     const ema13Slope = prevEma13 ? st.ema[13] - prevEma13 : 0;
     const ema34Slope = prevEma34 ? st.ema[34] - prevEma34 : 0;
@@ -233,8 +227,6 @@ function calculateKrakenScore(sym) {
     if (st._candleConfirmed) score++;
     const distanceFromEMA13 = Math.abs(price - st.ema[13]) / st.ema[13] * 100;
     if (distanceFromEMA13 < MAX_DISTANCE_EMA13) score++;
-    if (isBoom && isBullishTrend && ema144 < ema34) score++;
-    if (!isBoom && isBearishTrend && ema144 > ema34) score++;
     const timeSinceLast = Date.now() - lastSignalTime[sym];
     if (timeSinceLast > COOLDOWN_MINUTES * 60 * 1000) score++;
     const volatility = st.candles.length > 20 ?
@@ -256,7 +248,6 @@ function updateProfitProtection(sym) {
     const isBoom = sym.includes('BOOM');
     const isBuy = st.lastSignal.type === 'MULTUP';
 
-    // Calcular el progreso hacia TP1 (0 a 1)
     let progress = 0;
     if (isBuy) {
         const totalGain = tp1 - entry;
@@ -270,13 +261,11 @@ function updateProfitProtection(sym) {
         progress = Math.min(1, Math.max(0, currentGain / totalGain));
     }
 
-    // Determinar nivel de protección
     let newSL = null;
     let level = 0;
     let action = '';
 
     if (progress >= PROFIT_PROTECTION.TP_CLOSE_AT) {
-        // TP alcanzado - cerrar operación
         st._tp1Hit = true;
         st.signalExpired = true;
         wins++;
@@ -287,7 +276,6 @@ function updateProfitProtection(sym) {
     }
 
     if (progress >= PROFIT_PROTECTION.TRAIL_FINAL_AT) {
-        // 80% del TP → SL al 60% del profit
         const protectedProfit = progress * 0.6;
         if (isBuy) {
             newSL = entry + (tp1 - entry) * protectedProfit;
@@ -297,7 +285,6 @@ function updateProfitProtection(sym) {
         level = 3;
         action = `🛡️ SL movido al 60% del profit (${(progress * 100).toFixed(0)}% del TP)`;
     } else if (progress >= PROFIT_PROTECTION.TRAIL_AT) {
-        // 60% del TP → SL al 30% del profit
         const protectedProfit = progress * 0.3;
         if (isBuy) {
             newSL = entry + (tp1 - entry) * protectedProfit;
@@ -307,13 +294,11 @@ function updateProfitProtection(sym) {
         level = 2;
         action = `🛡️ SL movido al 30% del profit (${(progress * 100).toFixed(0)}% del TP)`;
     } else if (progress >= PROFIT_PROTECTION.BREAK_EVEN_AT) {
-        // 30% del TP → SL a Break Even
         newSL = entry;
         level = 1;
         action = `🛡️ SL movido a Break Even (${(progress * 100).toFixed(0)}% del TP)`;
     }
 
-    // Actualizar SL si hay cambio
     if (newSL !== null && newSL !== st._slPrice) {
         const oldSL = st._slPrice || st.lastSignal.sl;
         st._slPrice = newSL;
@@ -322,7 +307,6 @@ function updateProfitProtection(sym) {
         st._lastSLUpdate = Date.now();
         addLog(`🛡️ ${sym}: ${action} | SL: $${newSL.toFixed(4)} (antes: $${oldSL.toFixed(4)})`, 'alert');
         
-        // Enviar notificación a Telegram solo para movimientos importantes
         if (level >= 2) {
             const emoji = isBuy ? '🟢' : '🔴';
             const dir = isBuy ? 'COMPRA' : 'VENTA';
@@ -348,17 +332,22 @@ function generateSignal(sym) {
 
     const isBoom = sym.includes('BOOM');
     const price = st.price;
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34] &&
-        st.ema[34] > st.ema[55] && st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34] &&
-        st.ema[34] < st.ema[55] && st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
     if (!isBullishTrend && !isBearishTrend) return;
 
-    const tpRatio = 1;
-    const risk = Math.abs(price - st.ema[144]);
-    const tp1 = parseFloat((price + (isBullishTrend ? risk * tpRatio : -risk * tpRatio)).toFixed(4));
-    const slPrice = parseFloat(st.ema[144].toFixed(4));
+    // ✅ CÁLCULO CORRECTO DE TP Y SL
+    // Distancia entre EMA2 y EMA13 como base de riesgo
+    const riskDistance = Math.abs(st.ema[2] - st.ema[13]);
+    
+    // TP1 = precio + (distancia * 1.5) para BOOM (alcista)
+    // TP1 = precio - (distancia * 1.5) para CRASH (bajista)
+    const tpMultiplier = 1.5;
+    const tp1 = parseFloat((price + (isBullishTrend ? riskDistance * tpMultiplier : -riskDistance * tpMultiplier)).toFixed(4));
+    
+    // SL = EMA34 (más lejano para dar espacio)
+    const slPrice = parseFloat(st.ema[34].toFixed(4));
 
     const signal = {
         sym,
@@ -386,20 +375,26 @@ function generateSignal(sym) {
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     const dirRestriction = isBoom ? '🔒 BOOM → SOLO COMPRAS' : '🔒 CRASH → SOLO VENTAS';
     const scoreLabel = st._lastScore >= 9 ? '⭐ EXCELENTE' : st._lastScore >= 8 ? '🟢 BUENA' : '🟡 ACEPTABLE';
+    const risk = Math.abs(price - slPrice);
+    const reward = Math.abs(tp1 - price);
+    const rr = (reward / risk).toFixed(2);
 
     const telegramMsg =
         `${emoji} <b>🐙 KRAKEN PRO 2.0 SIGNAL</b>\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
         `${dirRestriction}\n` +
-        `<b>⭐ Fuerza:</b> ${st._lastScore}/10 ${scoreLabel}\n\n` +
+        `<b>⭐ Fuerza:</b> ${st._lastScore}/10 ${scoreLabel}\n` +
+        `<b>R:R:</b> 1:${rr}\n\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP1:</b> $${signal.tp1} 🎯\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n` +
+        `<b>Distancia SL:</b> $${risk.toFixed(4)}\n` +
+        `<b>Distancia TP:</b> $${reward.toFixed(4)}\n` +
         `<b>🛡️ Protección:</b> Activada (BE al 30%, Trail al 60% y 80%)\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | Score: ${st._lastScore}/10 | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | Score: ${st._lastScore}/10 | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice} | R:R 1:${rr}`, 'signal');
     sendTelegramMessage(telegramMsg);
 }
 
@@ -432,26 +427,19 @@ function analyzeTrendStart(sym) {
 
         const score = calculateKrakenScore(sym);
         const isBoom = sym.includes('BOOM');
-        const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34] &&
-            st.ema[34] > st.ema[55] && st.ema[55] > st.ema[89] && st.ema[89] > st.ema[144];
-        const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34] &&
-            st.ema[34] < st.ema[55] && st.ema[55] < st.ema[89] && st.ema[89] < st.ema[144];
+        const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+        const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
         if (score > 0 && (!st._lastScoreTime || Date.now() - st._lastScoreTime > 60000)) {
             const label = score >= 9 ? 'EXCELENTE' : score >= 8 ? 'BUENA' : 'ACEPTABLE';
             addLog(`📊 ${sym}: SCORE ${score}/10 | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)} | ${label}`, 'score');
         }
 
-        // 🛡️ Si hay señal activa, actualizar protección de ganancias
         if (st.lastSignal && !st.signalExpired) {
             const closed = updateProfitProtection(sym);
             if (closed) {
-                updateSignalBadge();
-                updateHistory();
-                updateCard(sym);
                 isProcessingQueue = false; processNextInQueue(); return;
             }
-            // Verificar SL también
             checkSignalExpiry(sym);
             isProcessingQueue = false; processNextInQueue(); return;
         }
@@ -489,7 +477,6 @@ function checkSignalExpiry(sym) {
     const isBoom = sym.includes('BOOM');
     const sl = st._slPrice || signal.sl;
 
-    // Verificar SL
     if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
         st.signalExpired = true;
         losses++;
@@ -582,7 +569,6 @@ function handleMsg(data) {
             }
         } else { candleCloseProcessed[sym] = false; }
         lastCandleKey[sym] = candleKey;
-        updateCard(sym);
     }
 }
 
@@ -607,11 +593,12 @@ function openWS(url) {
                 const msg = `🐙 <b>KRAKEN PRO 2.0 ACTIVADO</b>\n\n` +
                     `✅ Sistema en marcha\n` +
                     `📡 Monitoreando ${ALL_PAIRS.length} símbolos\n` +
+                    `📊 EMAs: 2,5,13,34\n` +
                     `⭐ Score mínimo: ${MIN_SCORE}/10\n` +
                     `🔒 BOOM → SOLO COMPRAS | CRASH → SOLO VENTAS\n` +
                     `🔄 Pullback + Confirmación de vela\n` +
                     `📈 RSI + ADX como filtros\n` +
-                    `🛑 Stop Loss en EMA144\n` +
+                    `🛑 SL en EMA34\n` +
                     `🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA\n\n` +
                     `⏰ ${new Date().toLocaleString()}`;
                 sendTelegramMessage(msg);
@@ -659,19 +646,6 @@ async function connectDeriv() {
     }
 }
 
-// ==================== UI (para el monitor) ====================
-function updateCard(sym) {
-    // Función simplificada para el monitor
-}
-
-function updateSignalBadge() {
-    // Función simplificada para el monitor
-}
-
-function updateHistory() {
-    // Función simplificada para el monitor
-}
-
 // ==================== SERVIDOR WEB ====================
 app.use(express.static('public'));
 
@@ -704,17 +678,19 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO 2.0 - 24/7 ACTIVO');
+console.log('📊 EMAs: 2,5,13,34');
 console.log('🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA');
 console.log('📊 Solo visualización - El bot corre en el backend');
 
 // ==================== INICIO ====================
-addLog('🔄 Iniciando KRAKEN PRO 2.0 con protección de ganancias...', 'info');
+addLog('🔄 Iniciando KRAKEN PRO 2.0 (EMAs 2,5,13,34)...', 'info');
 
 setTimeout(() => {
     const startMsg = `🐙 <b>KRAKEN PRO 2.0 INICIADO</b>\n\n` +
         `🔄 Conectando a Deriv...\n` +
         `⏳ El bot se activará automáticamente\n` +
         `📡 ${ALL_PAIRS.length} símbolos monitoreados\n` +
+        `📊 EMAs: 2,5,13,34\n` +
         `🛡️ Protección de ganancias ACTIVADA\n\n` +
         `⏰ ${new Date().toLocaleString()}`;
     sendTelegramMessage(startMsg);
