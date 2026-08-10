@@ -38,6 +38,7 @@ let dataLoaded = false;
 let analysisQueue = [];
 let isProcessingQueue = false;
 let lastSignalTime = {};
+let activationSent = false;
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -80,6 +81,7 @@ async function sendTelegramMessage(message) {
             console.log('📨 Mensaje enviado a Telegram');
             return true;
         }
+        console.log('❌ Error Telegram:', result.description || 'Error desconocido');
         return false;
     } catch (error) {
         console.log('❌ Error Telegram:', error.message);
@@ -358,9 +360,8 @@ function checkSignalExpiry(sym) {
     if (!st._tp1Hit) {
         if ((isBoom && price >= signal.tp1) || (!isBoom && price <= signal.tp1)) {
             st._tp1Hit = true; st.signalExpired = true; wins++;
-            const msg = `🎯✅ ¡TP1 ALCANZADO! 💰\n📈 ${sym} | ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}`;
             addLog(`🎯 TP1 ALCANZADO en ${sym}`, 'success');
-            sendTelegramMessage(`🐙 <b>${sym}</b>\n\n${msg}`);
+            sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🎯✅ ¡TP1 ALCANZADO! 💰\n📈 ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}`);
             resetPairState(sym);
             return;
         }
@@ -369,9 +370,8 @@ function checkSignalExpiry(sym) {
     if (!st.signalExpired && !st._tp1Hit) {
         if ((isBoom && price <= signal.sl) || (!isBoom && price >= signal.sl)) {
             st.signalExpired = true; losses++;
-            const msg = `🛑❌ ¡SL ALCANZADO!\n📉 ${sym} | ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}`;
             addLog(`🛑 SL ALCANZADO en ${sym}`, 'error');
-            sendTelegramMessage(`🐙 <b>${sym}</b>\n\n${msg}`);
+            sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🛑❌ ¡SL ALCANZADO!\n📉 ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}`);
             resetPairState(sym);
             return;
         }
@@ -472,11 +472,26 @@ function openWS(url) {
             signalsActive = true;
             running = true;
             addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS (Score ${MIN_SCORE}+)`, 'start');
-            sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n✅ Score mínimo: ${MIN_SCORE}/10\n✅ BOOM→COMPRAS | CRASH→VENTAS`);
+            
+            // ✅ ENVIAR MENSAJE DE ACTIVACIÓN A TELEGRAM
+            if (!activationSent) {
+                activationSent = true;
+                const msg = `🐙 <b>KRAKEN PRO 2.0 ACTIVADO</b>\n\n` +
+                    `✅ Sistema en marcha\n` +
+                    `📡 Monitoreando ${ALL_PAIRS.length} símbolos\n` +
+                    `⭐ Score mínimo: ${MIN_SCORE}/10\n` +
+                    `🔒 BOOM → SOLO COMPRAS | CRASH → SOLO VENTAS\n` +
+                    `🔄 Pullback + Confirmación de vela\n` +
+                    `📈 RSI + ADX como filtros\n` +
+                    `🛑 Stop Loss en EMA144\n\n` +
+                    `⏰ ${new Date().toLocaleString()}`;
+                sendTelegramMessage(msg);
+            }
         }, 5000);
     };
     ws.onclose = () => {
         addLog('⚠️ WebSocket cerrado', 'warn');
+        activationSent = false;
         if (running) scheduleReconnect();
     };
     ws.onerror = () => {};
