@@ -18,8 +18,10 @@ app.get('/ping', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🐙 KRAKEN PRO 2.0 ejecutándose en puerto ' + PORT);
+    console.log('🔗 https://kraken-pro-bot-production.up.railway.app');
 });
 
 console.log('🐙 KRAKEN PRO 2.0 - Servidor iniciado');
 console.log('⭐ Sistema de puntuación · Pullback · RSI · ADX');
 console.log('🔒 BOOM → SOLO COMPRAS | CRASH → SOLO VENTAS');
+console.log('⏰ 24/7 ACTIVO - UptimeRobot conectado');
