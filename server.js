@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO 2.0 - BACKEND 24/7');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🛡️ PROTECCIÓN DE GANANCIAS (SIN SPAM)');
+console.log('🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
@@ -19,10 +19,10 @@ const ADX_THRESHOLD = 20;
 
 // 🛡️ Configuración de protección de ganancias
 const PROFIT_PROTECTION = {
-    BREAK_EVEN_AT: 0.30,      // 30% del TP → SL a Break Even
-    TRAIL_AT: 0.60,           // 60% del TP → SL al 30% del profit
-    TRAIL_FINAL_AT: 0.80,     // 80% del TP → SL al 60% del profit
-    TP_CLOSE_AT: 1.00         // 100% del TP → Cerrar
+    BREAK_EVEN_AT: 0.30,
+    TRAIL_AT: 0.60,
+    TRAIL_FINAL_AT: 0.80,
+    TP_CLOSE_AT: 1.00
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -59,11 +59,10 @@ ALL_PAIRS.forEach(p => {
         _tp1Hit: false, _pendingEntry: false, _rsi: 50, _adx: 20,
         _pullbackDetected: false, _candleConfirmed: false, _lastCandleOpen: null,
         _lastScore: 0, _lastScoreTime: 0,
-        // 🛡️ Protección de ganancias
         _entryPrice: null,
         _tp1Price: null,
         _slPrice: null,
-        _profitProtectionLevel: 0, // 0=nada, 1=BE, 2=30%, 3=60%
+        _profitProtectionLevel: 0,
         _lastSLUpdate: 0,
         _protectionSent: { be: false, trail1: false, trail2: false }
     };
@@ -238,7 +237,7 @@ function calculateKrakenScore(sym) {
     return score;
 }
 
-// ==================== PROTECCIÓN DE GANANCIAS (SIN SPAM) ====================
+// ==================== PROTECCIÓN DE GANANCIAS ====================
 function updateProfitProtection(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return false;
@@ -263,9 +262,9 @@ function updateProfitProtection(sym) {
     }
 
     let newSL = null;
-    let level = 0;
     let action = '';
     let sendAlert = false;
+    let level = 0;
 
     // ✅ TP ALCANZADO - Cerrar operación
     if (progress >= PROFIT_PROTECTION.TP_CLOSE_AT) {
@@ -273,12 +272,24 @@ function updateProfitProtection(sym) {
         st.signalExpired = true;
         wins++;
         addLog(`🎯 TP1 ALCANZADO en ${sym} (${(progress * 100).toFixed(0)}%)`, 'success');
-        sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🎯✅ ¡TP1 ALCANZADO! 💰\n📈 ${st.lastSignal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}\n🐙 ¡Excelente!`);
+        
+        const emoji = st.lastSignal.type === 'MULTUP' ? '🟢' : '🔴';
+        const dir = st.lastSignal.type === 'MULTUP' ? 'COMPRA (CALL)' : 'VENTA (PUT)';
+        const dirEmoji = st.lastSignal.type === 'MULTUP' ? '📈' : '📉';
+        
+        sendTelegramMessage(
+            `${emoji} <b>🐙 KRAKEN PRO 2.0 - ✅ OPERACIÓN CERRADA CON GANANCIA</b>\n\n` +
+            `<b>Par:</b> ${sym}\n` +
+            `<b>Dirección:</b> ${dirEmoji} ${dir}\n` +
+            `<b>Resultado:</b> 🎯✅ ¡TP1 ALCANZADO!\n\n` +
+            `⏰ ${new Date().toLocaleTimeString()}`
+        );
+        
         resetPairState(sym);
         return true;
     }
 
-    // ✅ NIVEL 3: 80% del TP → SL al 60% del profit (SOLO UNA VEZ)
+    // ✅ NIVEL 3: 80% del TP → SL al 60%
     if (progress >= PROFIT_PROTECTION.TRAIL_FINAL_AT && !st._protectionSent.trail2) {
         const protectedProfit = 0.6;
         if (isBuy) {
@@ -291,7 +302,7 @@ function updateProfitProtection(sym) {
         sendAlert = true;
         action = `🛡️ SL movido al 60% del profit (${(progress * 100).toFixed(0)}% del TP)`;
     }
-    // ✅ NIVEL 2: 60% del TP → SL al 30% del profit (SOLO UNA VEZ)
+    // ✅ NIVEL 2: 60% del TP → SL al 30%
     else if (progress >= PROFIT_PROTECTION.TRAIL_AT && !st._protectionSent.trail1) {
         const protectedProfit = 0.3;
         if (isBuy) {
@@ -304,7 +315,7 @@ function updateProfitProtection(sym) {
         sendAlert = true;
         action = `🛡️ SL movido al 30% del profit (${(progress * 100).toFixed(0)}% del TP)`;
     }
-    // ✅ NIVEL 1: 30% del TP → SL a Break Even (SOLO UNA VEZ)
+    // ✅ NIVEL 1: 30% del TP → SL a Break Even
     else if (progress >= PROFIT_PROTECTION.BREAK_EVEN_AT && !st._protectionSent.be) {
         newSL = entry;
         level = 1;
@@ -313,32 +324,29 @@ function updateProfitProtection(sym) {
         action = `🛡️ SL movido a Break Even (${(progress * 100).toFixed(0)}% del TP)`;
     }
 
-    // Actualizar SL si hay cambio
-    if (newSL !== null && newSL !== st._slPrice) {
-        const oldSL = st._slPrice || st.lastSignal.sl;
-        st._slPrice = newSL;
-        st.lastSignal.sl = newSL;
-        st._profitProtectionLevel = level;
-        st._lastSLUpdate = Date.now();
-        addLog(`🛡️ ${sym}: ${action} | SL: $${newSL.toFixed(4)}`, 'alert');
-        
-        // ✅ Solo enviar mensaje si es un nuevo nivel (sendAlert = true)
-        if (sendAlert) {
-            const emoji = isBuy ? '🟢' : '🔴';
-            const dir = isBuy ? 'COMPRA' : 'VENTA';
-            sendTelegramMessage(
-                `${emoji} <b>🐙 KRAKEN PRO 2.0 - PROTECCIÓN</b>\n\n` +
-                `<b>Par:</b> ${sym}\n` +
-                `<b>Dirección:</b> ${dir}\n` +
-                `<b>Progreso:</b> ${(progress * 100).toFixed(0)}% hacia TP1\n` +
-                `${action}\n` +
-                `<b>Nuevo SL:</b> $${newSL.toFixed(4)} 🛡️`
-            );
-        }
-        return true;
-    }
+    if (newSL === null) return false;
+    if (newSL === st._slPrice) return false;
 
-    return false;
+    const oldSL = st._slPrice || st.lastSignal.sl;
+    st._slPrice = newSL;
+    st.lastSignal.sl = newSL;
+    st._profitProtectionLevel = level;
+    st._lastSLUpdate = Date.now();
+    addLog(`🛡️ ${sym}: ${action} | SL: $${newSL.toFixed(4)}`, 'alert');
+    
+    if (sendAlert) {
+        const emoji = isBuy ? '🟢' : '🔴';
+        const dir = isBuy ? 'COMPRA' : 'VENTA';
+        sendTelegramMessage(
+            `${emoji} <b>🐙 KRAKEN PRO 2.0 - PROTECCIÓN</b>\n\n` +
+            `<b>Par:</b> ${sym}\n` +
+            `<b>Dirección:</b> ${dir}\n` +
+            `<b>Progreso:</b> ${(progress * 100).toFixed(0)}% hacia TP1\n` +
+            `${action}\n` +
+            `<b>Nuevo SL:</b> $${newSL.toFixed(4)} 🛡️`
+        );
+    }
+    return true;
 }
 
 // ==================== GENERAR SEÑAL ====================
@@ -476,6 +484,7 @@ function processNextInQueue() {
     }
 }
 
+// ==================== CHECK SIGNAL EXPIRY (PROTECCIÓN - SIN MONTOS) ====================
 function checkSignalExpiry(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
@@ -485,11 +494,25 @@ function checkSignalExpiry(sym) {
     const isBoom = sym.includes('BOOM');
     const sl = st._slPrice || signal.sl;
 
+    // ✅ Si toca el SL protegido (cierre con protección)
     if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
         st.signalExpired = true;
         losses++;
-        addLog(`🛑 SL ALCANZADO en ${sym} (protegido)`, 'error');
-        sendTelegramMessage(`🐙 <b>${sym}</b>\n\n🛑❌ ¡SL ALCANZADO!\n📉 ${signal.type === 'MULTUP' ? 'COMPRA' : 'VENTA'}`);
+        
+        addLog(`🛡️ Protección activada en ${sym} - Operación cerrada`, 'alert');
+        
+        const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
+        const dir = signal.type === 'MULTUP' ? 'COMPRA (CALL)' : 'VENTA (PUT)';
+        const dirEmoji = signal.type === 'MULTUP' ? '📈' : '📉';
+        
+        sendTelegramMessage(
+            `${emoji} <b>🐙 KRAKEN PRO 2.0 - 🛡️ OPERACIÓN CERRADA CON PROTECCIÓN</b>\n\n` +
+            `<b>Par:</b> ${sym}\n` +
+            `<b>Dirección:</b> ${dirEmoji} ${dir}\n` +
+            `<b>Resultado:</b> 🛡️✅ Ganancia asegurada\n\n` +
+            `⏰ ${new Date().toLocaleTimeString()}`
+        );
+        
         resetPairState(sym);
         return;
     }
@@ -608,7 +631,8 @@ function openWS(url) {
                     `🔄 Pullback + Confirmación de vela\n` +
                     `📈 RSI + ADX como filtros\n` +
                     `🛑 SL en EMA34\n` +
-                    `🛡️ PROTECCIÓN DE GANANCIAS (SIN SPAM)\n\n` +
+                    `🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA\n` +
+                    `📊 Cierres SIN montos de ganancia/pérdida\n\n` +
                     `⏰ ${new Date().toLocaleString()}`;
                 sendTelegramMessage(msg);
             }
@@ -688,8 +712,8 @@ app.listen(PORT, '0.0.0.0', () => {
 
 console.log('⏰ KRAKEN PRO 2.0 - 24/7 ACTIVO');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🛡️ PROTECCIÓN DE GANANCIAS (SIN SPAM)');
-console.log('📊 Solo visualización - El bot corre en el backend');
+console.log('🛡️ PROTECCIÓN DE GANANCIAS ACTIVADA');
+console.log('📊 Cierres SIN montos de ganancia/pérdida');
 
 // ==================== INICIO ====================
 addLog('🔄 Iniciando KRAKEN PRO 2.0 (EMAs 2,5,13,34)...', 'info');
@@ -700,7 +724,8 @@ setTimeout(() => {
         `⏳ El bot se activará automáticamente\n` +
         `📡 ${ALL_PAIRS.length} símbolos monitoreados\n` +
         `📊 EMAs: 2,5,13,34\n` +
-        `🛡️ Protección de ganancias (SIN SPAM)\n\n` +
+        `🛡️ Protección de ganancias ACTIVADA\n` +
+        `📊 Cierres SIN montos de ganancia/pérdida\n\n` +
         `⏰ ${new Date().toLocaleString()}`;
     sendTelegramMessage(startMsg);
 }, 3000);
