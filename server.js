@@ -484,7 +484,7 @@ function processNextInQueue() {
     }
 }
 
-// ==================== CHECK SIGNAL EXPIRY (PROTECCIÓN - SIN MONTOS) ====================
+// ==================== CHECK SIGNAL EXPIRY (CORREGIDO) ====================
 function checkSignalExpiry(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
@@ -494,24 +494,42 @@ function checkSignalExpiry(sym) {
     const isBoom = sym.includes('BOOM');
     const sl = st._slPrice || signal.sl;
 
-    // ✅ Si toca el SL protegido (cierre con protección)
+    // ✅ Verificar si el precio tocó el SL
     if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
         st.signalExpired = true;
-        losses++;
-        
-        addLog(`🛡️ Protección activada en ${sym} - Operación cerrada`, 'alert');
         
         const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
         const dir = signal.type === 'MULTUP' ? 'COMPRA (CALL)' : 'VENTA (PUT)';
         const dirEmoji = signal.type === 'MULTUP' ? '📈' : '📉';
         
-        sendTelegramMessage(
-            `${emoji} <b>🐙 KRAKEN PRO 2.0 - 🛡️ OPERACIÓN CERRADA CON PROTECCIÓN</b>\n\n` +
-            `<b>Par:</b> ${sym}\n` +
-            `<b>Dirección:</b> ${dirEmoji} ${dir}\n` +
-            `<b>Resultado:</b> 🛡️✅ Ganancia asegurada\n\n` +
-            `⏰ ${new Date().toLocaleTimeString()}`
-        );
+        // ✅ Determinar si es SL normal o protegido
+        const isProtected = st._profitProtectionLevel > 0;
+        
+        if (isProtected) {
+            // 🛡️ SL PROTEGIDO - Ganancia asegurada
+            losses++;
+            addLog(`🛡️ Protección activada en ${sym} - Operación cerrada`, 'alert');
+            
+            sendTelegramMessage(
+                `${emoji} <b>🐙 KRAKEN PRO 2.0 - 🛡️ OPERACIÓN CERRADA CON PROTECCIÓN</b>\n\n` +
+                `<b>Par:</b> ${sym}\n` +
+                `<b>Dirección:</b> ${dirEmoji} ${dir}\n` +
+                `<b>Resultado:</b> 🛡️✅ Ganancia asegurada\n\n` +
+                `⏰ ${new Date().toLocaleTimeString()}`
+            );
+        } else {
+            // ❌ SL NORMAL - Pérdida
+            losses++;
+            addLog(`❌ SL ALCANZADO en ${sym} - Pérdida`, 'error');
+            
+            sendTelegramMessage(
+                `${emoji} <b>🐙 KRAKEN PRO 2.0 - ❌ OPERACIÓN CERRADA CON PÉRDIDA</b>\n\n` +
+                `<b>Par:</b> ${sym}\n` +
+                `<b>Dirección:</b> ${dirEmoji} ${dir}\n` +
+                `<b>Resultado:</b> ❌ SL alcanzado\n\n` +
+                `⏰ ${new Date().toLocaleTimeString()}`
+            );
+        }
         
         resetPairState(sym);
         return;
