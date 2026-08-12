@@ -5,17 +5,26 @@ const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO 2.0 - BACKEND 24/7');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🎯 TP 1:1 basado en EMA34');
+console.log('🎯 ENTRADAS EN RETROCESO (PULLBACK)');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34];
 const TIMEFRAME = 60;
-const MIN_SCORE = 8;
-const COOLDOWN_MINUTES = 5;
+const MIN_SCORE = 6; // Score mínimo reducido porque el pullback ya da confianza
+const COOLDOWN_MINUTES = 3; // Reducido porque las entradas en pullback son más rápidas
 const MAX_DISTANCE_EMA13 = 2.0;
 const ADX_THRESHOLD = 20;
+
+// 🎯 Configuración de retrocesos
+const PULLBACK_CONFIG = {
+    USE_EMA13: true,      // Usar EMA13 como zona de retroceso
+    USE_EMA34: true,      // Usar EMA34 como zona de retroceso
+    TOUCH_TOLERANCE: 0.3, // 0.3% de tolerancia para considerar que tocó la EMA
+    CANDLE_CONFIRMATION: true, // Requiere vela de confirmación
+    MIN_PULLBACK_DISTANCE: 0.2 // Distancia mínima de retroceso (0.2%)
+};
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -53,7 +62,12 @@ ALL_PAIRS.forEach(p => {
         _lastScore: 0, _lastScoreTime: 0,
         _entryPrice: null,
         _tpPrice: null,
-        _slPrice: null
+        _slPrice: null,
+        // 🎯 Nuevos campos para retrocesos
+        _pullbackZone: null, // 'ema13' o 'ema34'
+        _pullbackPrice: null,
+        _pullbackTime: null,
+        _pullbackConfirmed: false
     };
     EMA_PERIODS.forEach(period => {
         pairState[p].ema[period] = null;
@@ -147,55 +161,90 @@ function calculateADX(candles, period = 14) {
     return Math.min(100, dx);
 }
 
-// ==================== DETECTAR PULLBACK ====================
+// ==================== DETECTAR RETROCESO (PULLBACK) ====================
 function detectPullback(sym) {
     const st = pairState[sym];
-    if (!st || st.candles.length < 10 || st.ema[5] === null || st.ema[13] === null) return false;
+    if (!st || st.candles.length < 10) return false;
+
     const price = st.price;
-    const ema5 = st.ema[5], ema13 = st.ema[13];
+    const ema13 = st.ema[13];
+    const ema34 = st.ema[34];
+    
+    if (ema13 === null || ema34 === null) return false;
+
     const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
     const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
+
     if (!isBullishTrend && !isBearishTrend) return false;
-    if (isBullishTrend) {
-        const nearEMA5 = Math.abs(price - ema5) / ema5 * 100 < 0.5;
-        const nearEMA13 = Math.abs(price - ema13) / ema13 * 100 < 0.5;
-        return nearEMA5 || nearEMA13;
+
+    const tolerance = PULLBACK_CONFIG.TOUCH_TOLERANCE / 100;
+    let pullbackDetected = false;
+    let zone = null;
+
+    // ✅ Verificar retroceso a EMA13
+    if (PULLBACK_CONFIG.USE_EMA13) {
+        const distanceToEMA13 = Math.abs(price - ema13) / ema13;
+        if (distanceToEMA13 < tolerance) {
+            pullbackDetected = true;
+            zone = 'EMA13';
+        }
     }
-    if (isBearishTrend) {
-        const nearEMA5 = Math.abs(price - ema5) / ema5 * 100 < 0.5;
-        const nearEMA13 = Math.abs(price - ema13) / ema13 * 100 < 0.5;
-        return nearEMA5 || nearEMA13;
+
+    // ✅ Verificar retroceso a EMA34 (si no se detectó en EMA13)
+    if (!pullbackDetected && PULLBACK_CONFIG.USE_EMA34) {
+        const distanceToEMA34 = Math.abs(price - ema34) / ema34;
+        if (distanceToEMA34 < tolerance) {
+            pullbackDetected = true;
+            zone = 'EMA34';
+        }
     }
+
+    if (pullbackDetected) {
+        st._pullbackZone = zone;
+        st._pullbackPrice = price;
+        st._pullbackTime = Date.now();
+        st._pullbackDetected = true;
+        addLog(`🔄 ${sym}: RETROCESO detectado en ${zone} | Precio: $${price.toFixed(4)}`, 'trend');
+        return true;
+    }
+
     return false;
 }
 
-// ==================== CONFIRMACIÓN DE VELA ====================
-function checkCandleConfirmation(sym) {
+// ==================== CONFIRMACIÓN DE VELA PARA RETROCESO ====================
+function checkPullbackCandleConfirmation(sym) {
     const st = pairState[sym];
     if (!st || st._lastCandleOpen === null || st._lastCandleClose === null) return false;
+
     const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
     const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
+
+    if (!isBullishTrend && !isBearishTrend) return false;
+
     if (isBullishTrend) {
-        const closeAboveOpen = st._lastCandleClose > st._lastCandleOpen;
-        const closeAboveEMA5 = st._lastCandleClose > st.ema[5];
+        // Vela alcista: cierre > apertura, y cierre cerca del máximo
+        const isBullishCandle = st._lastCandleClose > st._lastCandleOpen;
         const range = st._lastCandleClose - st._lastCandleOpen;
-        const nearTop = range > 0 && (st._lastCandleClose - st._lastCandleOpen) / range > 0.6;
-        return closeAboveOpen && closeAboveEMA5 && nearTop;
+        const nearTop = range > 0 && (st._lastCandleClose - st._lastCandleOpen) / range > 0.5;
+        return isBullishCandle && nearTop;
     }
+
     if (isBearishTrend) {
-        const closeBelowOpen = st._lastCandleClose < st._lastCandleOpen;
-        const closeBelowEMA5 = st._lastCandleClose < st.ema[5];
+        // Vela bajista: cierre < apertura, y cierre cerca del mínimo
+        const isBearishCandle = st._lastCandleClose < st._lastCandleOpen;
         const range = st._lastCandleOpen - st._lastCandleClose;
-        const nearBottom = range > 0 && (st._lastCandleOpen - st._lastCandleClose) / range > 0.6;
-        return closeBelowOpen && closeBelowEMA5 && nearBottom;
+        const nearBottom = range > 0 && (st._lastCandleOpen - st._lastCandleClose) / range > 0.5;
+        return isBearishCandle && nearBottom;
     }
+
     return false;
 }
 
-// ==================== SISTEMA DE PUNTUACIÓN ====================
+// ==================== SISTEMA DE PUNTUACIÓN CON RETROCESO ====================
 function calculateKrakenScore(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null || st.ema[34] === null) return 0;
+    
     let score = 0;
     const isBoom = sym.includes('BOOM');
     const price = st.price;
@@ -204,23 +253,37 @@ function calculateKrakenScore(sym) {
     const rsi = st._rsi || 50, adx = st._adx || 20;
     const isBullishTrend = ema2 > ema5 && ema5 > ema13 && ema13 > ema34;
     const isBearishTrend = ema2 < ema5 && ema5 < ema13 && ema13 < ema34;
+
+    // 1. Tendencia definida
     if (isBullishTrend || isBearishTrend) score++;
+
+    // 2. Pendiente positiva de EMAs
     const ema13Slope = prevEma13 ? st.ema[13] - prevEma13 : 0;
     const ema34Slope = prevEma34 ? st.ema[34] - prevEma34 : 0;
     if ((isBullishTrend && ema13Slope > 0 && ema34Slope > 0) ||
         (isBearishTrend && ema13Slope < 0 && ema34Slope < 0)) score++;
+
+    // 3. ADX confirma tendencia
     if (adx > ADX_THRESHOLD) score++;
+
+    // 4. RSI confirma
     if (isBullishTrend && rsi > 50 && rsi < 75) score++;
     if (isBearishTrend && rsi < 50 && rsi > 25) score++;
-    if (st._pullbackDetected) score++;
+
+    // 5. ⭐ RETROCESO DETECTADO (punto extra)
+    if (st._pullbackDetected) score += 2;
+
+    // 6. Vela de confirmación (punto extra)
     if (st._candleConfirmed) score++;
+
+    // 7. Precio cerca de EMA (buena zona de entrada)
     const distanceFromEMA13 = Math.abs(price - st.ema[13]) / st.ema[13] * 100;
     if (distanceFromEMA13 < MAX_DISTANCE_EMA13) score++;
+
+    // 8. Cooldown respetado
     const timeSinceLast = Date.now() - lastSignalTime[sym];
     if (timeSinceLast > COOLDOWN_MINUTES * 60 * 1000) score++;
-    const volatility = st.candles.length > 20 ?
-        st.candles.slice(-20).reduce((acc, v, i, arr) => i > 0 ? acc + Math.abs(v - arr[i - 1]) : acc, 0) / 20 : 0;
-    if (volatility > 0.5) score++;
+
     st._lastScore = score;
     st._lastScoreTime = Date.now();
     return score;
@@ -238,6 +301,7 @@ function generateSignal(sym) {
 
     if (!isBullishTrend && !isBearishTrend) return;
 
+    // SL en EMA34
     const slPrice = parseFloat(st.ema[34].toFixed(4));
     const riskDistance = Math.abs(price - slPrice);
     const tp = parseFloat((price + (isBullishTrend ? riskDistance : -riskDistance)).toFixed(4));
@@ -250,7 +314,8 @@ function generateSignal(sym) {
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
         status: 'PENDIENTE',
-        score: st._lastScore
+        score: st._lastScore,
+        pullbackZone: st._pullbackZone || 'N/A'
     };
 
     st.lastSignal = signal;
@@ -265,19 +330,20 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-    const dirRestriction = isBoom ? '🔒 BOOM → SOLO COMPRAS' : '🔒 CRASH → SOLO VENTAS';
+    const pullbackInfo = st._pullbackDetected ? `🔄 Retroceso en ${st._pullbackZone}` : '🚀 Entrada directa';
 
-    // ✅ MENSAJE SIMPLIFICADO - "TP" en lugar de "TP1"
+    // ✅ MENSAJE CON INFORMACIÓN DE RETROCESO
     const telegramMsg =
         `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
+        `<b>${pullbackInfo}</b>\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP:</b> $${signal.tp} 🎯\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | Entry: $${price} | TP: $${tp} | SL: $${slPrice}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | ${pullbackInfo} | Entry: $${price} | TP: $${tp} | SL: $${slPrice}`, 'signal');
     sendTelegramMessage(telegramMsg);
 }
 
@@ -291,47 +357,61 @@ function analyzeTrendStart(sym) {
         if (!st || st.ema[2] === null) { isProcessingQueue = false; processNextInQueue(); return; }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
 
+        // Calcular indicadores
         st._rsi = calculateRSI(st.candles);
         st._adx = calculateADX(st.candles);
 
+        // 🎯 DETECTAR RETROCESO
         const pullbackDetected = detectPullback(sym);
         if (pullbackDetected && !st._pullbackDetected) {
             st._pullbackDetected = true;
             st._pullbackPrice = st.price;
             st._pullbackTime = Date.now();
-            addLog(`🔄 ${sym}: PULLBACK detectado`, 'trend');
         }
 
-        const candleConfirmed = checkCandleConfirmation(sym);
+        // ✅ VERIFICAR CONFIRMACIÓN DE VELA EN RETROCESO
+        const candleConfirmed = checkPullbackCandleConfirmation(sym);
         if (candleConfirmed && !st._candleConfirmed) {
             st._candleConfirmed = true;
-            addLog(`✅ ${sym}: VELA DE CONFIRMACIÓN`, 'success');
+            addLog(`✅ ${sym}: VELA DE CONFIRMACIÓN EN RETROCESO`, 'success');
         }
 
+        // Calcular score
         const score = calculateKrakenScore(sym);
         const isBoom = sym.includes('BOOM');
         const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
         const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
+        // Log de score
         if (score > 0 && (!st._lastScoreTime || Date.now() - st._lastScoreTime > 60000)) {
-            addLog(`📊 ${sym}: SCORE ${score}/10 | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)}`, 'score');
+            const pullbackStatus = st._pullbackDetected ? `🔄 Retroceso en ${st._pullbackZone}` : 'Sin retroceso';
+            addLog(`📊 ${sym}: SCORE ${score}/10 | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)} | ${pullbackStatus}`, 'score');
         }
 
+        // Verificar señal existente
         if (st.lastSignal && !st.signalExpired) {
             checkSignalExpiry(sym);
             isProcessingQueue = false; processNextInQueue(); return;
         }
 
+        // Restricción de dirección
         let allowedDirection = false;
         let signalType = null;
         if (isBoom && isBullishTrend) { allowedDirection = true; signalType = 'MULTUP'; }
         else if (!isBoom && isBearishTrend) { allowedDirection = true; signalType = 'MULTDOWN'; }
 
-        if (score >= MIN_SCORE && !st.lastSignal && !st.signalExpired && allowedDirection) {
-            generateSignal(sym);
-            st._pullbackDetected = false;
-            st._candleConfirmed = false;
-            isProcessingQueue = false; processNextInQueue(); return;
+        // 🎯 CONDICIONES DE ENTRADA CON RETROCESO
+        const hasPullback = st._pullbackDetected && st._candleConfirmed;
+        const minScore = hasPullback ? 6 : 8; // Si hay retroceso, se necesita menos score
+
+        if (score >= minScore && !st.lastSignal && !st.signalExpired && allowedDirection) {
+            // Si hay retroceso confirmado, entrar
+            if (hasPullback || score >= 8) {
+                generateSignal(sym);
+                st._pullbackDetected = false;
+                st._candleConfirmed = false;
+                isProcessingQueue = false; processNextInQueue(); return;
+            }
         }
 
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
@@ -357,7 +437,7 @@ function checkSignalExpiry(sym) {
     const sl = st._slPrice || signal.sl;
     const tp = st._tpPrice || signal.tp;
 
-    // ✅ TP ALCANZADO - "TP" en lugar de "TP1"
+    // TP ALCANZADO
     if (!st._tp1Hit) {
         if ((isBoom && price >= tp) || (!isBoom && price <= tp)) {
             st._tp1Hit = true;
@@ -381,7 +461,7 @@ function checkSignalExpiry(sym) {
         }
     }
 
-    // ✅ SL ALCANZADO
+    // SL ALCANZADO
     if (!st.signalExpired) {
         if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
             st.signalExpired = true;
@@ -419,6 +499,9 @@ function resetPairState(sym) {
     st._entryPrice = null;
     st._tpPrice = null;
     st._slPrice = null;
+    st._pullbackZone = null;
+    st._pullbackPrice = null;
+    st._pullbackTime = null;
 }
 
 // ==================== WEBSOCKET ====================
@@ -502,11 +585,11 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS`, 'start');
+            addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS (RETROCESOS)`, 'start');
             
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🔄 Estrategia: RETROCESOS (Pullback)\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -584,13 +667,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
 console.log('⏰ KRAKEN PRO 2.0 - 24/7 ACTIVO');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🎯 TP 1:1 basado en EMA34');
+console.log('🔄 ESTRATEGIA: ENTRADAS EN RETROCESO (PULLBACK)');
 
 // ==================== INICIO ====================
-addLog('🔄 Iniciando KRAKEN PRO 2.0...', 'info');
+addLog('🔄 Iniciando KRAKEN PRO 2.0 con RETROCESOS...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO 2.0 INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos monitoreados\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO 2.0 INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos monitoreados\n🔄 Estrategia: RETROCESOS (Pullback)\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
