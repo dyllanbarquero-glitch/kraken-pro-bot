@@ -52,7 +52,7 @@ ALL_PAIRS.forEach(p => {
         _pullbackDetected: false, _candleConfirmed: false, _lastCandleOpen: null,
         _lastScore: 0, _lastScoreTime: 0,
         _entryPrice: null,
-        _tp1Price: null,
+        _tpPrice: null,
         _slPrice: null
     };
     EMA_PERIODS.forEach(period => {
@@ -240,7 +240,7 @@ function generateSignal(sym) {
 
     const slPrice = parseFloat(st.ema[34].toFixed(4));
     const riskDistance = Math.abs(price - slPrice);
-    const tp1 = parseFloat((price + (isBullishTrend ? riskDistance : -riskDistance)).toFixed(4));
+    const tp = parseFloat((price + (isBullishTrend ? riskDistance : -riskDistance)).toFixed(4));
 
     const signal = {
         sym,
@@ -267,17 +267,17 @@ function generateSignal(sym) {
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
     const dirRestriction = isBoom ? '🔒 BOOM → SOLO COMPRAS' : '🔒 CRASH → SOLO VENTAS';
 
-    // ✅ MENSAJE SIMPLIFICADO - SIN TÉCNICA
+    // ✅ MENSAJE SIMPLIFICADO - "TP" en lugar de "TP1"
     const telegramMsg =
         `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
-        `<b>TP:</b> $${signal.tp1} 🎯\n` +
+        `<b>TP:</b> $${signal.tp} 🎯\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | Entry: $${price} | TP1: $${tp1} | SL: $${slPrice}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | Entry: $${price} | TP: $${tp} | SL: $${slPrice}`, 'signal');
     sendTelegramMessage(telegramMsg);
 }
 
@@ -355,11 +355,11 @@ function checkSignalExpiry(sym) {
     const signal = st.lastSignal;
     const isBoom = sym.includes('BOOM');
     const sl = st._slPrice || signal.sl;
-    const tp1 = st._tp1Price || signal.tp1;
+    const tp = st._tpPrice || signal.tp;
 
-    // ✅ TP ALCANZADO - MENSAJE SIMPLIFICADO
+    // ✅ TP ALCANZADO - "TP" en lugar de "TP1"
     if (!st._tp1Hit) {
-        if ((isBoom && price >= tp1) || (!isBoom && price <= tp1)) {
+        if ((isBoom && price >= tp) || (!isBoom && price <= tp)) {
             st._tp1Hit = true;
             st.signalExpired = true;
             wins++;
@@ -381,7 +381,7 @@ function checkSignalExpiry(sym) {
         }
     }
 
-    // ✅ SL ALCANZADO - MENSAJE SIMPLIFICADO
+    // ✅ SL ALCANZADO
     if (!st.signalExpired) {
         if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
             st.signalExpired = true;
@@ -411,7 +411,7 @@ function resetPairState(sym) {
     st.lastSignal = null;
     st.signalExpired = false;
     st._trendStarted = false;
-    st._tpHit = false;
+    st._tp1Hit = false;
     st._pullbackDetected = false;
     st._candleConfirmed = false;
     st.waitingForNewTrend = false;
