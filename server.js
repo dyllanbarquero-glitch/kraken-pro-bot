@@ -12,8 +12,8 @@ const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34];
 const TIMEFRAME = 60;
-const MIN_SCORE = 7;
-const COOLDOWN_MINUTES = 5;
+const MIN_SCORE = 10;
+const COOLDOWN_MINUTES = 1;
 const MAX_DISTANCE_EMA13 = 2.0;
 const ADX_THRESHOLD = 40;
 
