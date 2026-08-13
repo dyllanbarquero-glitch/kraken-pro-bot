@@ -15,7 +15,7 @@ const TIMEFRAME = 60;
 const MIN_SCORE = 6; // Score mínimo reducido porque el pullback ya da confianza
 const COOLDOWN_MINUTES = 3; // Reducido porque las entradas en pullback son más rápidas
 const MAX_DISTANCE_EMA13 = 2.0;
-const ADX_THRESHOLD = 20;
+const ADX_THRESHOLD = 30;
 
 // 🎯 Configuración de retrocesos
 const PULLBACK_CONFIG = {
