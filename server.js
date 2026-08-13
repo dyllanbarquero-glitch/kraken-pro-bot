@@ -5,17 +5,25 @@ const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO 2.0 - BACKEND 24/7');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🎯 TP 1:1 basado en EMA34');
+console.log('🎯 ESTRUCTURA DE MERCADO: MÁX/MÍN');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34];
 const TIMEFRAME = 60;
-const MIN_SCORE = 10;
-const COOLDOWN_MINUTES = 1;
+const MIN_SCORE = 6;
+const COOLDOWN_MINUTES = 3;
 const MAX_DISTANCE_EMA13 = 2.0;
-const ADX_THRESHOLD = 40;
+const ADX_THRESHOLD = 20;
+
+// 🎯 Configuración de estructura de mercado
+const STRUCTURE_CONFIG = {
+    LOOKBACK_CANDLES: 20,      // Velas para buscar máximos/mínimos
+    BREAKOUT_THRESHOLD: 0.2,   // % para confirmar ruptura
+    RETEST_THRESHOLD: 0.3,     // % para confirmar retroceso
+    MIN_STRENGTH: 2            // Número de toques para considerar fuerte
+};
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -53,7 +61,19 @@ ALL_PAIRS.forEach(p => {
         _lastScore: 0, _lastScoreTime: 0,
         _entryPrice: null,
         _tpPrice: null,
-        _slPrice: null
+        _slPrice: null,
+        // 🎯 Estructura de mercado
+        _structure: {
+            max: null,        // Precio del máximo
+            min: null,        // Precio del mínimo
+            maxCandle: null,  // Índice de la vela del máximo
+            minCandle: null,  // Índice de la vela del mínimo
+            maxCount: 0,      // Veces que se ha tocado el máximo
+            minCount: 0,      // Veces que se ha tocado el mínimo
+            structureType: null, // 'strong_min' o 'weak_max'
+            confirmed: false,
+            breakoutPrice: null
+        }
     };
     EMA_PERIODS.forEach(period => {
         pairState[p].ema[period] = null;
@@ -147,55 +167,125 @@ function calculateADX(candles, period = 14) {
     return Math.min(100, dx);
 }
 
-// ==================== DETECTAR PULLBACK ====================
-function detectPullback(sym) {
+// ==================== DETECTAR ESTRUCTURA DE MERCADO ====================
+function detectMarketStructure(sym) {
     const st = pairState[sym];
-    if (!st || st.candles.length < 10 || st.ema[5] === null || st.ema[13] === null) return false;
+    if (!st || st.candles.length < STRUCTURE_CONFIG.LOOKBACK_CANDLES) return;
+
+    const candles = st.candles;
+    const lookback = Math.min(STRUCTURE_CONFIG.LOOKBACK_CANDLES, candles.length - 10);
+    const start = candles.length - lookback - 10;
+    const end = candles.length - 2;
+
+    let maxPrice = -Infinity;
+    let minPrice = Infinity;
+    let maxIndex = -1;
+    let minIndex = -1;
+    let maxCount = 0;
+    let minCount = 0;
+
+    // ✅ Buscar máximos y mínimos
+    for (let i = start; i < end; i++) {
+        const price = candles[i];
+        const prev = candles[i - 1] || price;
+        const next = candles[i + 1] || price;
+
+        // Pico (máximo)
+        if (price > prev && price > next && price > candles[i - 2] && price > candles[i + 2]) {
+            if (price > maxPrice) {
+                maxPrice = price;
+                maxIndex = i;
+            }
+            maxCount++;
+        }
+
+        // Valle (mínimo)
+        if (price < prev && price < next && price < candles[i - 2] && price < candles[i + 2]) {
+            if (price < minPrice) {
+                minPrice = price;
+                minIndex = i;
+            }
+            minCount++;
+        }
+    }
+
+    // ✅ Determinar si es un MÍNIMO FUERTE (para compras)
+    const isStrongMin = minCount >= STRUCTURE_CONFIG.MIN_STRENGTH && minPrice > 0;
+
+    // ✅ Determinar si es un MÁXIMO DÉBIL (para ventas)
+    const isWeakMax = maxCount < STRUCTURE_CONFIG.MIN_STRENGTH && maxPrice > 0;
+
+    // ✅ Guardar estructura
+    st._structure.max = maxPrice > 0 ? maxPrice : null;
+    st._structure.min = minPrice < Infinity ? minPrice : null;
+    st._structure.maxCount = maxCount;
+    st._structure.minCount = minCount;
+    st._structure.maxCandle = maxIndex;
+    st._structure.minCandle = minIndex;
+
+    // ✅ Determinar tipo de estructura
+    if (isStrongMin) {
+        st._structure.structureType = 'strong_min';
+        st._structure.confirmed = true;
+        addLog(`📊 ${sym}: MÍNIMO FUERTE detectado en $${minPrice.toFixed(4)} (${minCount} toques)`, 'trend');
+    } else if (isWeakMax) {
+        st._structure.structureType = 'weak_max';
+        st._structure.confirmed = true;
+        addLog(`📊 ${sym}: MÁXIMO DÉBIL detectado en $${maxPrice.toFixed(4)} (${maxCount} toques)`, 'trend');
+    } else {
+        st._structure.confirmed = false;
+        st._structure.structureType = null;
+    }
+}
+
+// ==================== VERIFICAR RUPTURA Y RETROCESO ====================
+function checkBreakoutAndRetest(sym) {
+    const st = pairState[sym];
+    if (!st || !st._structure.confirmed) return false;
+
     const price = st.price;
-    const ema5 = st.ema[5], ema13 = st.ema[13];
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
-    if (!isBullishTrend && !isBearishTrend) return false;
-    if (isBullishTrend) {
-        const nearEMA5 = Math.abs(price - ema5) / ema5 * 100 < 0.5;
-        const nearEMA13 = Math.abs(price - ema13) / ema13 * 100 < 0.5;
-        return nearEMA5 || nearEMA13;
+    const structure = st._structure;
+    const threshold = STRUCTURE_CONFIG.BREAKOUT_THRESHOLD / 100;
+    const retestThreshold = STRUCTURE_CONFIG.RETEST_THRESHOLD / 100;
+
+    // ✅ Para COMPRAS: Mínimo fuerte
+    if (structure.structureType === 'strong_min') {
+        const min = structure.min;
+        // Ruptura alcista: precio sube más del X% sobre el mínimo
+        const isBreakout = price > min * (1 + threshold);
+        // Retroceso: precio vuelve a la zona del mínimo
+        const isRetest = Math.abs(price - min) / min < retestThreshold;
+        
+        if (isBreakout && isRetest) {
+            structure.breakoutPrice = price;
+            addLog(`🔄 ${sym}: RETROCESO CONFIRMADO en mínimo fuerte $${min.toFixed(4)}`, 'trend');
+            return true;
+        }
     }
-    if (isBearishTrend) {
-        const nearEMA5 = Math.abs(price - ema5) / ema5 * 100 < 0.5;
-        const nearEMA13 = Math.abs(price - ema13) / ema13 * 100 < 0.5;
-        return nearEMA5 || nearEMA13;
+
+    // ✅ Para VENTAS: Máximo débil
+    if (structure.structureType === 'weak_max') {
+        const max = structure.max;
+        // Ruptura bajista: precio baja más del X% bajo el máximo
+        const isBreakout = price < max * (1 - threshold);
+        // Retroceso: precio vuelve a la zona del máximo
+        const isRetest = Math.abs(price - max) / max < retestThreshold;
+        
+        if (isBreakout && isRetest) {
+            structure.breakoutPrice = price;
+            addLog(`🔄 ${sym}: RETROCESO CONFIRMADO en máximo débil $${max.toFixed(4)}`, 'trend');
+            return true;
+        }
     }
+
     return false;
 }
 
-// ==================== CONFIRMACIÓN DE VELA ====================
-function checkCandleConfirmation(sym) {
-    const st = pairState[sym];
-    if (!st || st._lastCandleOpen === null || st._lastCandleClose === null) return false;
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
-    if (isBullishTrend) {
-        const closeAboveOpen = st._lastCandleClose > st._lastCandleOpen;
-        const closeAboveEMA5 = st._lastCandleClose > st.ema[5];
-        const range = st._lastCandleClose - st._lastCandleOpen;
-        const nearTop = range > 0 && (st._lastCandleClose - st._lastCandleOpen) / range > 0.6;
-        return closeAboveOpen && closeAboveEMA5 && nearTop;
-    }
-    if (isBearishTrend) {
-        const closeBelowOpen = st._lastCandleClose < st._lastCandleOpen;
-        const closeBelowEMA5 = st._lastCandleClose < st.ema[5];
-        const range = st._lastCandleOpen - st._lastCandleClose;
-        const nearBottom = range > 0 && (st._lastCandleOpen - st._lastCandleClose) / range > 0.6;
-        return closeBelowOpen && closeBelowEMA5 && nearBottom;
-    }
-    return false;
-}
-
-// ==================== SISTEMA DE PUNTUACIÓN ====================
+// ==================== SISTEMA DE PUNTUACIÓN CON ESTRUCTURA ====================
 function calculateKrakenScore(sym) {
     const st = pairState[sym];
     if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null || st.ema[34] === null) return 0;
+    
     let score = 0;
     const isBoom = sym.includes('BOOM');
     const price = st.price;
@@ -204,23 +294,40 @@ function calculateKrakenScore(sym) {
     const rsi = st._rsi || 50, adx = st._adx || 20;
     const isBullishTrend = ema2 > ema5 && ema5 > ema13 && ema13 > ema34;
     const isBearishTrend = ema2 < ema5 && ema5 < ema13 && ema13 < ema34;
+
+    // 1. Tendencia definida
     if (isBullishTrend || isBearishTrend) score++;
+
+    // 2. Pendiente positiva de EMAs
     const ema13Slope = prevEma13 ? st.ema[13] - prevEma13 : 0;
     const ema34Slope = prevEma34 ? st.ema[34] - prevEma34 : 0;
     if ((isBullishTrend && ema13Slope > 0 && ema34Slope > 0) ||
         (isBearishTrend && ema13Slope < 0 && ema34Slope < 0)) score++;
+
+    // 3. ADX confirma tendencia
     if (adx > ADX_THRESHOLD) score++;
+
+    // 4. RSI confirma
     if (isBullishTrend && rsi > 50 && rsi < 75) score++;
     if (isBearishTrend && rsi < 50 && rsi > 25) score++;
-    if (st._pullbackDetected) score++;
+
+    // 5. ⭐ ESTRUCTURA DE MERCADO (2 puntos)
+    if (st._structure.confirmed) {
+        score += 2;
+    }
+
+    // 6. ⭐ RUPTURA + RETROCESO CONFIRMADO (2 puntos extra)
+    if (st._pullbackDetected) {
+        score += 2;
+    }
+
+    // 7. Vela de confirmación
     if (st._candleConfirmed) score++;
-    const distanceFromEMA13 = Math.abs(price - st.ema[13]) / st.ema[13] * 100;
-    if (distanceFromEMA13 < MAX_DISTANCE_EMA13) score++;
+
+    // 8. Cooldown respetado
     const timeSinceLast = Date.now() - lastSignalTime[sym];
     if (timeSinceLast > COOLDOWN_MINUTES * 60 * 1000) score++;
-    const volatility = st.candles.length > 20 ?
-        st.candles.slice(-20).reduce((acc, v, i, arr) => i > 0 ? acc + Math.abs(v - arr[i - 1]) : acc, 0) / 20 : 0;
-    if (volatility > 0.5) score++;
+
     st._lastScore = score;
     st._lastScoreTime = Date.now();
     return score;
@@ -238,9 +345,22 @@ function generateSignal(sym) {
 
     if (!isBullishTrend && !isBearishTrend) return;
 
+    // SL en EMA34
     const slPrice = parseFloat(st.ema[34].toFixed(4));
     const riskDistance = Math.abs(price - slPrice);
     const tp = parseFloat((price + (isBullishTrend ? riskDistance : -riskDistance)).toFixed(4));
+
+    // ✅ Determinar tipo de estructura para el mensaje
+    let structureType = '';
+    let structureInfo = '';
+    
+    if (st._structure.structureType === 'strong_min') {
+        structureType = 'MÍNIMO FUERTE';
+        structureInfo = `🟢 Mínimo fuerte en $${st._structure.min.toFixed(4)}`;
+    } else if (st._structure.structureType === 'weak_max') {
+        structureType = 'MÁXIMO DÉBIL';
+        structureInfo = `🔴 Máximo débil en $${st._structure.max.toFixed(4)}`;
+    }
 
     const signal = {
         sym,
@@ -250,7 +370,10 @@ function generateSignal(sym) {
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
         status: 'PENDIENTE',
-        score: st._lastScore
+        score: st._lastScore,
+        structure: structureType,
+        structureInfo: structureInfo,
+        pullbackDetected: st._pullbackDetected
     };
 
     st.lastSignal = signal;
@@ -265,19 +388,24 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-    const dirRestriction = isBoom ? '🔒 BOOM → SOLO COMPRAS' : '🔒 CRASH → SOLO VENTAS';
+    
+    // ✅ MENSAJE CON ESTRUCTURA DE MERCADO
+    const structureMsg = signal.pullbackDetected ? 
+        `✅ Retroceso confirmado\n${signal.structureInfo}` : 
+        `${signal.structureInfo}`;
 
-    // ✅ MENSAJE SIMPLIFICADO - "TP" en lugar de "TP1"
     const telegramMsg =
         `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
+        `<b>Estructura:</b> ${signal.structure}\n` +
+        `${structureMsg}\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP:</b> $${signal.tp} 🎯\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | Entry: $${price} | TP: $${tp} | SL: $${slPrice}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | ${signal.structure} | ${signal.structureInfo} | Entry: $${price}`, 'signal');
     sendTelegramMessage(telegramMsg);
 }
 
@@ -291,47 +419,72 @@ function analyzeTrendStart(sym) {
         if (!st || st.ema[2] === null) { isProcessingQueue = false; processNextInQueue(); return; }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
 
+        // Calcular indicadores
         st._rsi = calculateRSI(st.candles);
         st._adx = calculateADX(st.candles);
 
-        const pullbackDetected = detectPullback(sym);
-        if (pullbackDetected && !st._pullbackDetected) {
+        // 🎯 DETECTAR ESTRUCTURA DE MERCADO
+        detectMarketStructure(sym);
+
+        // ✅ VERIFICAR RUPTURA Y RETROCESO
+        const breakoutConfirmed = checkBreakoutAndRetest(sym);
+        if (breakoutConfirmed && !st._pullbackDetected) {
             st._pullbackDetected = true;
             st._pullbackPrice = st.price;
             st._pullbackTime = Date.now();
-            addLog(`🔄 ${sym}: PULLBACK detectado`, 'trend');
         }
 
+        // ✅ VERIFICAR CONFIRMACIÓN DE VELA
         const candleConfirmed = checkCandleConfirmation(sym);
         if (candleConfirmed && !st._candleConfirmed) {
             st._candleConfirmed = true;
             addLog(`✅ ${sym}: VELA DE CONFIRMACIÓN`, 'success');
         }
 
+        // Calcular score
         const score = calculateKrakenScore(sym);
         const isBoom = sym.includes('BOOM');
         const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
         const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
-        if (score > 0 && (!st._lastScoreTime || Date.now() - st._lastScoreTime > 60000)) {
-            addLog(`📊 ${sym}: SCORE ${score}/10 | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)}`, 'score');
+        // Log de estructura
+        if (st._structure.confirmed && (!st._lastScoreTime || Date.now() - st._lastScoreTime > 60000)) {
+            const structType = st._structure.structureType === 'strong_min' ? 'MIN FUERTE' : 'MAX DEBIL';
+            const price = st._structure.structureType === 'strong_min' ? st._structure.min : st._structure.max;
+            addLog(`📊 ${sym}: SCORE ${score}/10 | ${structType} en $${price?.toFixed(4)} | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)}`, 'score');
         }
 
+        // Verificar señal existente
         if (st.lastSignal && !st.signalExpired) {
             checkSignalExpiry(sym);
             isProcessingQueue = false; processNextInQueue(); return;
         }
 
+        // Restricción de dirección
         let allowedDirection = false;
         let signalType = null;
         if (isBoom && isBullishTrend) { allowedDirection = true; signalType = 'MULTUP'; }
         else if (!isBoom && isBearishTrend) { allowedDirection = true; signalType = 'MULTDOWN'; }
 
-        if (score >= MIN_SCORE && !st.lastSignal && !st.signalExpired && allowedDirection) {
-            generateSignal(sym);
-            st._pullbackDetected = false;
-            st._candleConfirmed = false;
-            isProcessingQueue = false; processNextInQueue(); return;
+        // 🎯 CONDICIONES DE ENTRADA CON ESTRUCTURA DE MERCADO
+        const hasStructure = st._structure.confirmed && st._pullbackDetected;
+        const minScore = hasStructure ? 6 : 8;
+
+        if (score >= minScore && !st.lastSignal && !st.signalExpired && allowedDirection) {
+            // Verificar que la estructura coincide con la dirección
+            let structureValid = false;
+            if (isBullishTrend && st._structure.structureType === 'strong_min') {
+                structureValid = true;
+            } else if (isBearishTrend && st._structure.structureType === 'weak_max') {
+                structureValid = true;
+            }
+
+            if (structureValid || score >= 9) {
+                generateSignal(sym);
+                st._pullbackDetected = false;
+                st._candleConfirmed = false;
+                isProcessingQueue = false; processNextInQueue(); return;
+            }
         }
 
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
@@ -357,7 +510,7 @@ function checkSignalExpiry(sym) {
     const sl = st._slPrice || signal.sl;
     const tp = st._tpPrice || signal.tp;
 
-    // ✅ TP ALCANZADO - "TP" en lugar de "TP1"
+    // TP ALCANZADO
     if (!st._tp1Hit) {
         if ((isBoom && price >= tp) || (!isBoom && price <= tp)) {
             st._tp1Hit = true;
@@ -381,7 +534,7 @@ function checkSignalExpiry(sym) {
         }
     }
 
-    // ✅ SL ALCANZADO
+    // SL ALCANZADO
     if (!st.signalExpired) {
         if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
             st.signalExpired = true;
@@ -419,6 +572,33 @@ function resetPairState(sym) {
     st._entryPrice = null;
     st._tpPrice = null;
     st._slPrice = null;
+}
+
+// ==================== FUNCIÓN AUXILIAR: CONFIRMACIÓN DE VELA ====================
+function checkCandleConfirmation(sym) {
+    const st = pairState[sym];
+    if (!st || st._lastCandleOpen === null || st._lastCandleClose === null) return false;
+
+    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
+
+    if (!isBullishTrend && !isBearishTrend) return false;
+
+    if (isBullishTrend) {
+        const isBullishCandle = st._lastCandleClose > st._lastCandleOpen;
+        const range = st._lastCandleClose - st._lastCandleOpen;
+        const nearTop = range > 0 && (st._lastCandleClose - st._lastCandleOpen) / range > 0.5;
+        return isBullishCandle && nearTop;
+    }
+
+    if (isBearishTrend) {
+        const isBearishCandle = st._lastCandleClose < st._lastCandleOpen;
+        const range = st._lastCandleOpen - st._lastCandleClose;
+        const nearBottom = range > 0 && (st._lastCandleOpen - st._lastCandleClose) / range > 0.5;
+        return isBearishCandle && nearBottom;
+    }
+
+    return false;
 }
 
 // ==================== WEBSOCKET ====================
@@ -502,11 +682,11 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS`, 'start');
+            addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS (ESTRUCTURA DE MERCADO)`, 'start');
             
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 Estrategia: ESTRUCTURA DE MERCADO\n📊 Mínimo Fuerte (COMPRAS) | Máximo Débil (VENTAS)\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -584,13 +764,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
 console.log('⏰ KRAKEN PRO 2.0 - 24/7 ACTIVO');
 console.log('📊 EMAs: 2,5,13,34');
-console.log('🎯 TP 1:1 basado en EMA34');
+console.log('🎯 ESTRATEGIA: ESTRUCTURA DE MERCADO');
 
 // ==================== INICIO ====================
-addLog('🔄 Iniciando KRAKEN PRO 2.0...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO 2.0 con ESTRUCTURA DE MERCADO...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO 2.0 INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos monitoreados\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO 2.0 INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos monitoreados\n🎯 Estrategia: ESTRUCTURA DE MERCADO\n📊 Mínimo Fuerte (COMPRAS) | Máximo Débil (VENTAS)\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
