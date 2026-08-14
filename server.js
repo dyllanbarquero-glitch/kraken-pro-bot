@@ -3,8 +3,8 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO - ESTRATEGIA PURA');
-console.log('📊 SOPORTE (BOOM) / RESISTENCIA (CRASH)');
+console.log('🐙 KRAKEN PRO - ESTRUCTURA DE MERCADO');
+console.log('📊 IMPULSO + RETROCESO (AMBAS DIRECCIONES)');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
@@ -44,6 +44,8 @@ let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
 
+let activeTrend = {};
+
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
         price: null, ema: {}, prevEma: {}, candles: [], loaded: false,
@@ -58,8 +60,21 @@ ALL_PAIRS.forEach(p => {
         _supportCount: 0,
         _resistanceCount: 0,
         _pips: 0,
-        _isWin: false
+        _isWin: false,
+        _structure: {
+            impulse: null,
+            retracement: null,
+            trend: null,
+            lastImpulseHigh: null,
+            lastImpulseLow: null,
+            lastRetracementHigh: null,
+            lastRetracementLow: null,
+            impulseCount: 0,
+            structureConfirmed: false,
+            lastImpulseDirection: null // 'up' o 'down'
+        }
     };
+    activeTrend[p] = null;
     EMA_PERIODS.forEach(period => {
         pairState[p].ema[period] = null;
         pairState[p].prevEma[period] = null;
@@ -115,6 +130,71 @@ function calcEMAs(sym) {
     });
 }
 
+// 🎯 DETECTAR ESTRUCTURA DE MERCADO (IMPULSO + RETROCESO)
+function detectMarketStructure(sym) {
+    const st = pairState[sym];
+    if (!st || st.candles.length < 10) return;
+
+    const candles = st.candles;
+    const lookback = Math.min(20, candles.length - 5);
+    const start = candles.length - lookback - 5;
+    const end = candles.length - 2;
+
+    let highs = [];
+    let lows = [];
+    
+    for (let i = start; i < end; i++) {
+        const price = candles[i];
+        const prev = candles[i - 1] || price;
+        const next = candles[i + 1] || price;
+        const prev2 = candles[i - 2] || price;
+        const next2 = candles[i + 2] || price;
+
+        if (price > prev && price > next && price > prev2 && price > next2) {
+            highs.push({ price: price, index: i });
+        }
+        if (price < prev && price < next && price < prev2 && price < next2) {
+            lows.push({ price: price, index: i });
+        }
+    }
+
+    if (highs.length >= 2 && lows.length >= 2) {
+        const lastHigh = highs[highs.length - 1];
+        const prevHigh = highs[highs.length - 2];
+        const lastLow = lows[lows.length - 1];
+        const prevLow = lows[lows.length - 2];
+
+        // 🎯 ESTRUCTURA ALCISTA: cada impulso supera al anterior (subiendo)
+        const isBullish = lastHigh.price > prevHigh.price && lastLow.price > prevLow.price;
+        
+        // 🎯 ESTRUCTURA BAJISTA: cada impulso supera al anterior (bajando)
+        const isBearish = lastHigh.price < prevHigh.price && lastLow.price < prevLow.price;
+
+        if (isBullish) {
+            st._structure.trend = 'bullish';
+            st._structure.lastImpulseHigh = lastHigh.price;
+            st._structure.lastRetracementLow = lastLow.price;
+            st._structure.structureConfirmed = true;
+            st._structure.lastImpulseDirection = 'up';
+            if (activeTrend[sym] !== 'bullish') {
+                activeTrend[sym] = 'bullish';
+                addLog(`📈 ${sym}: ESTRUCTURA ALCISTA | Impulso sube: $${lastHigh.price.toFixed(4)} | Retroceso: $${lastLow.price.toFixed(4)}`, 'trend');
+            }
+        } else if (isBearish) {
+            st._structure.trend = 'bearish';
+            st._structure.lastImpulseLow = lastLow.price;
+            st._structure.lastRetracementHigh = lastHigh.price;
+            st._structure.structureConfirmed = true;
+            st._structure.lastImpulseDirection = 'down';
+            if (activeTrend[sym] !== 'bearish') {
+                activeTrend[sym] = 'bearish';
+                addLog(`📉 ${sym}: ESTRUCTURA BAJISTA | Impulso baja: $${lastLow.price.toFixed(4)} | Retroceso: $${lastHigh.price.toFixed(4)}`, 'trend');
+            }
+        }
+    }
+}
+
+// 🎯 DETECTAR SOPORTE (piso) Y RESISTENCIA (techo)
 function detectSR(sym) {
     const st = pairState[sym];
     if (!st || st.candles.length < 20) return;
@@ -134,7 +214,6 @@ function detectSR(sym) {
         const prev = candles[i - 1] || price;
         const next = candles[i + 1] || price;
 
-        // Mínimo (soporte - piso)
         if (price < prev && price < next && price < candles[i - 2] && price < candles[i + 2]) {
             if (support === null || Math.abs(price - support) / support < 0.005) {
                 support = support !== null ? (support + price) / 2 : price;
@@ -145,7 +224,6 @@ function detectSR(sym) {
             }
         }
 
-        // Máximo (resistencia - techo)
         if (price > prev && price > next && price > candles[i - 2] && price > candles[i + 2]) {
             if (resistance === null || Math.abs(price - resistance) / resistance < 0.005) {
                 resistance = resistance !== null ? (resistance + price) / 2 : price;
@@ -171,21 +249,27 @@ function detectSR(sym) {
 }
 
 function calculatePips(price1, price2) {
-    // Para BOOM/CRASH, 1 pip = 0.0001 (4 decimales)
     return parseFloat((Math.abs(price2 - price1) * 10000).toFixed(2));
 }
 
+// 🎯 GENERAR SEÑAL (1 por tendencia)
 function generateSignal(sym) {
     const st = pairState[sym];
     if (!st || st.lastSignal && !st.signalExpired) return;
+
+    // ✅ Solo 1 operación por tendencia
+    if (st.lastSignal) {
+        addLog(`⏳ ${sym}: Ya hay operación activa en esta tendencia`, 'info');
+        return;
+    }
 
     const isBoom = sym.includes('BOOM');
     const price = st.price;
     const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
     const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
-    // ✅ BOOM → SOPORTE (piso) + EMAS ALCISTAS → COMPRA
-    // ✅ CRASH → RESISTENCIA (techo) + EMAS BAJISTAS → VENTA
+    // ✅ BOOM → SOPORTE + ESTRUCTURA ALCISTA → COMPRA
+    // ✅ CRASH → RESISTENCIA + ESTRUCTURA BAJISTA → VENTA
     let condition = false;
     let srType = '';
     let srPrice = 0;
@@ -193,7 +277,7 @@ function generateSignal(sym) {
 
     if (isBoom && isBullish && st._support && st._supportCount >= 2) {
         const nearSupport = Math.abs(price - st._support) / st._support < 0.005;
-        if (nearSupport && price > st._support) {
+        if (nearSupport && price > st._support && st._structure.trend === 'bullish') {
             condition = true;
             srType = 'SOPORTE (piso)';
             srPrice = st._support;
@@ -203,7 +287,7 @@ function generateSignal(sym) {
 
     if (!isBoom && isBearish && st._resistance && st._resistanceCount >= 2) {
         const nearResistance = Math.abs(price - st._resistance) / st._resistance < 0.005;
-        if (nearResistance && price < st._resistance) {
+        if (nearResistance && price < st._resistance && st._structure.trend === 'bearish') {
             condition = true;
             srType = 'RESISTENCIA (techo)';
             srPrice = st._resistance;
@@ -218,6 +302,10 @@ function generateSignal(sym) {
     const tp = parseFloat((price + (isBullish ? risk : -risk)).toFixed(4));
     const pips = calculatePips(price, tp);
 
+    // 🎯 Determinar dirección del último impulso
+    const impulseDir = st._structure.lastImpulseDirection || 'N/A';
+    const trendEmoji = st._structure.trend === 'bullish' ? '📈' : '📉';
+
     const signal = {
         sym,
         type: isBoom && isBullish ? 'MULTUP' : 'MULTDOWN',
@@ -229,7 +317,9 @@ function generateSignal(sym) {
         srType: srType,
         srPrice: srPrice,
         srCount: srCount,
-        pips: pips
+        pips: pips,
+        trend: st._structure.trend || 'N/A',
+        impulseDir: impulseDir
     };
 
     st.lastSignal = signal;
@@ -244,18 +334,20 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
+    const impulseEmoji = signal.impulseDir === 'up' ? '⬆️' : '⬇️';
 
     const msg =
         `${emoji} 🐙 KRAKEN PRO\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
+        `<b>Estructura:</b> ${trendEmoji} ${signal.trend.toUpperCase()} (${impulseEmoji} impulso ${signal.impulseDir})\n` +
         `<b>${srType}:</b> $${signal.srPrice.toFixed(4)} (${signal.srCount} toques)\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP:</b> $${signal.tp} 🎯 (${signal.pips} pips)\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | ${srType} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | Estructura ${signal.trend} | ${srType} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
     sendTelegramMessage(msg);
 }
 
@@ -268,6 +360,7 @@ function analyzeTrendStart(sym) {
         if (!st || st.ema[2] === null) { isProcessingQueue = false; processNextInQueue(); return; }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
 
+        detectMarketStructure(sym);
         detectSR(sym);
 
         if (st.lastSignal && !st.signalExpired) {
@@ -316,6 +409,7 @@ function checkSignalExpiry(sym) {
             botStats.totalTrades++;
             st._pips = pips;
             st._isWin = true;
+            activeTrend[sym] = null;
             addLog(`🎯 TP ALCANZADO en ${sym} | +${pips} pips`, 'success');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
@@ -342,6 +436,7 @@ function checkSignalExpiry(sym) {
             botStats.totalTrades++;
             st._pips = -pips;
             st._isWin = false;
+            activeTrend[sym] = null;
             addLog(`❌ SL ALCANZADO en ${sym} | -${pips} pips`, 'error');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
@@ -453,7 +548,7 @@ function openWS(url) {
             addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)\n📊 EMAs 2,5,13,34\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 ESTRUCTURA DE MERCADO\n📊 Impulso + Retroceso (ambas direcciones)\n🔴 BOOM: Soporte + Estructura Alcista → COMPRA\n🔵 CRASH: Resistencia + Estructura Bajista → VENTA\n📌 1 operación por tendencia\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -532,12 +627,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)');
+console.log('🎯 ESTRUCTURA DE MERCADO (Impulso + Retroceso)');
 
-addLog('🎯 Iniciando KRAKEN PRO...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO con ESTRUCTURA DE MERCADO...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)\n📊 EMAs 2,5,13,34\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 ESTRUCTURA DE MERCADO\n📊 Impulso + Retroceso (ambas direcciones)\n📌 1 operación por tendencia\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
