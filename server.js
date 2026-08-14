@@ -3,29 +3,15 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO 2.0 - BACKEND 24/7');
-console.log('📊 ESTRATEGIA: REVERSIÓN EXTREMA');
-console.log('📈 BOOM: Oversold → Compra | CRASH: Overbought → Venta');
-console.log('📊 PIPs: Cálculo y conteo automático');
+console.log('🐙 KRAKEN PRO - ESTRATEGIA PURA');
+console.log('📊 ACCIÓN DEL PRECIO + EMAS');
+console.log('🎯 SIN PARÁMETROS - SIN FILTROS');
 
 // ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34];
 const TIMEFRAME = 60;
-const MIN_SCORE = 7;
-const COOLDOWN_MINUTES = 5;
-const ADX_THRESHOLD = 20;
-
-// 🎯 Configuración de movimiento extremo
-const EXTREME_CONFIG = {
-    LOOKBACK_CANDLES: 30,
-    EXTREME_THRESHOLD: 2.0,
-    RSI_OVERSOLD: 30,
-    RSI_OVERBOUGHT: 70,
-    MIN_EXTREME_CANDLES: 5,
-    CONFIRMATION_CANDLES: 2
-};
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -47,13 +33,9 @@ let botStats = {
     winCount: 0, 
     lossCount: 0, 
     totalTrades: 0,
-    // 📊 PIPs
     totalPipsGained: 0,
     totalPipsLost: 0,
-    netPips: 0,
-    avgPipsPerTrade: 0,
-    bestTradePips: 0,
-    worstTradePips: 0
+    netPips: 0
 };
 let reconnectAttempts = 0;
 let reconnectTimer = null;
@@ -70,24 +52,14 @@ ALL_PAIRS.forEach(p => {
         price: null, ema: {}, prevEma: {}, candles: [], loaded: false,
         lastTrend: null, waitingForNewTrend: false, lastSignal: null,
         signalExpired: false, _lastCandleClose: null, _lastLogTime: 0,
-        _trendStarted: false, _trendStartTime: null, _trendAge: 0,
-        _tp1Hit: false, _pendingEntry: false, _rsi: 50, _adx: 20,
-        _pullbackDetected: false, _candleConfirmed: false, _lastCandleOpen: null,
-        _lastScore: 0, _lastScoreTime: 0,
+        _trendStarted: false, _tp1Hit: false, 
         _entryPrice: null,
         _tpPrice: null,
         _slPrice: null,
-        _extreme: {
-            detected: false,
-            type: null,
-            startPrice: null,
-            endPrice: null,
-            movement: 0,
-            extremeCandles: [],
-            confirmed: false,
-            reversalCandle: null
-        },
-        // 📊 PIPs
+        _support: null,
+        _resistance: null,
+        _supportCount: 0,
+        _resistanceCount: 0,
         _pips: 0,
         _isWin: false
     };
@@ -122,7 +94,6 @@ async function sendTelegramMessage(message) {
             console.log('📨 Mensaje enviado a Telegram ✅');
             return true;
         }
-        console.log('❌ Error Telegram:', result.description || 'Error desconocido');
         return false;
     } catch (error) {
         console.log('❌ Error Telegram:', error.message);
@@ -150,167 +121,60 @@ function calcEMAs(sym) {
     });
 }
 
-// ==================== RSI ====================
-function calculateRSI(candles, period = 14) {
-    if (candles.length < period + 1) return 50;
-    let gains = 0, losses = 0;
-    for (let i = candles.length - period; i < candles.length - 1; i++) {
-        const diff = candles[i + 1] - candles[i];
-        if (diff >= 0) gains += diff;
-        else losses -= diff;
-    }
-    if (losses === 0) return 100;
-    const rs = gains / losses;
-    return 100 - (100 / (1 + rs));
-}
-
-// ==================== ADX ====================
-function calculateADX(candles, period = 14) {
-    if (candles.length < period * 2) return 20;
-    let plusDM = 0, minusDM = 0, tr = 0;
-    for (let i = candles.length - period; i < candles.length - 1; i++) {
-        const high = candles[i + 1] - candles[i];
-        const low = candles[i] - candles[i + 1];
-        const range = Math.abs(candles[i + 1] - candles[i]);
-        if (high > low && high > 0) plusDM += high;
-        else if (low > high && low > 0) minusDM += low;
-        tr += range;
-    }
-    if (tr === 0) return 20;
-    const plusDI = 100 * plusDM / tr;
-    const minusDI = 100 * minusDM / tr;
-    const dx = 100 * Math.abs(plusDI - minusDI) / (plusDI + minusDI);
-    return Math.min(100, dx);
-}
-
-// ==================== DETECTAR MOVIMIENTO EXTREMO ====================
-function detectExtremeMovement(sym) {
+// ==================== DETECTAR SOPORTE/RESISTENCIA ====================
+function detectSR(sym) {
     const st = pairState[sym];
-    if (!st || st.candles.length < EXTREME_CONFIG.LOOKBACK_CANDLES) return;
+    if (!st || st.candles.length < 20) return;
 
     const candles = st.candles;
-    const lookback = Math.min(EXTREME_CONFIG.LOOKBACK_CANDLES, candles.length - 5);
+    const lookback = Math.min(20, candles.length - 5);
     const start = candles.length - lookback - 5;
     const end = candles.length - 2;
 
-    const isBoom = sym.includes('BOOM');
-    
-    let startPrice = candles[start];
-    let endPrice = candles[end];
-    let movement = ((endPrice - startPrice) / startPrice) * 100;
+    let support = null;
+    let resistance = null;
+    let supportCount = 0;
+    let resistanceCount = 0;
 
-    let extremePrice = startPrice;
-    let extremeIndex = start;
-    for (let i = start; i <= end; i++) {
-        if (isBoom && candles[i] < extremePrice) {
-            extremePrice = candles[i];
-            extremeIndex = i;
+    for (let i = start; i < end; i++) {
+        const price = candles[i];
+        const prev = candles[i - 1] || price;
+        const next = candles[i + 1] || price;
+
+        // Mínimo (soporte)
+        if (price < prev && price < next && price < candles[i - 2] && price < candles[i + 2]) {
+            if (support === null || Math.abs(price - support) / support < 0.005) {
+                support = support !== null ? (support + price) / 2 : price;
+                supportCount++;
+            } else if (price < support) {
+                support = price;
+                supportCount = 1;
+            }
         }
-        if (!isBoom && candles[i] > extremePrice) {
-            extremePrice = candles[i];
-            extremeIndex = i;
+
+        // Máximo (resistencia)
+        if (price > prev && price > next && price > candles[i - 2] && price > candles[i + 2]) {
+            if (resistance === null || Math.abs(price - resistance) / resistance < 0.005) {
+                resistance = resistance !== null ? (resistance + price) / 2 : price;
+                resistanceCount++;
+            } else if (price > resistance) {
+                resistance = price;
+                resistanceCount = 1;
+            }
         }
     }
 
-    let movementFromExtreme = ((endPrice - extremePrice) / extremePrice) * 100;
-    
-    let isExtreme = false;
-    let type = null;
+    st._support = support;
+    st._resistance = resistance;
+    st._supportCount = supportCount;
+    st._resistanceCount = resistanceCount;
 
-    if (isBoom && movementFromExtreme < -EXTREME_CONFIG.EXTREME_THRESHOLD) {
-        isExtreme = true;
-        type = 'oversold';
+    if (support && supportCount >= 2) {
+        addLog(`📊 ${sym}: SOPORTE en $${support.toFixed(4)} (${supportCount} toques)`, 'trend');
     }
-
-    if (!isBoom && movementFromExtreme > EXTREME_CONFIG.EXTREME_THRESHOLD) {
-        isExtreme = true;
-        type = 'overbought';
+    if (resistance && resistanceCount >= 2) {
+        addLog(`📊 ${sym}: RESISTENCIA en $${resistance.toFixed(4)} (${resistanceCount} toques)`, 'trend');
     }
-
-    if (isExtreme) {
-        st._extreme.detected = true;
-        st._extreme.type = type;
-        st._extreme.startPrice = startPrice;
-        st._extreme.endPrice = endPrice;
-        st._extreme.movement = movementFromExtreme;
-        st._extreme.extremePrice = extremePrice;
-        st._extreme.extremeIndex = extremeIndex;
-        
-        const extremeLabel = type === 'oversold' ? 'OVERSOLD' : 'OVERBOUGHT';
-        addLog(`🔥 ${sym}: MOVIMIENTO EXTREMO ${extremeLabel} detectado | ${movementFromExtreme.toFixed(2)}% | Desde $${extremePrice.toFixed(4)}`, 'trend');
-        return true;
-    }
-
-    st._extreme.detected = false;
-    return false;
-}
-
-// ==================== VERIFICAR ALINEACIÓN DE EMAS ====================
-function checkEMAsAlignmentAfterExtreme(sym) {
-    const st = pairState[sym];
-    if (!st || !st._extreme.detected) return false;
-
-    const isBoom = sym.includes('BOOM');
-    const ema2 = st.ema[2];
-    const ema5 = st.ema[5];
-    const ema13 = st.ema[13];
-    const ema34 = st.ema[34];
-
-    if (ema2 === null || ema5 === null || ema13 === null || ema34 === null) return false;
-
-    const isBullishAlignment = ema2 > ema5 && ema5 > ema13 && ema13 > ema34;
-    const isBearishAlignment = ema2 < ema5 && ema5 < ema13 && ema13 < ema34;
-
-    if (isBoom && isBullishAlignment) {
-        addLog(`✅ ${sym}: EMAS ALINEADAS ALCISTAS después de OVERSOLD`, 'success');
-        return true;
-    }
-
-    if (!isBoom && isBearishAlignment) {
-        addLog(`✅ ${sym}: EMAS ALINEADAS BAJISTAS después de OVERBOUGHT`, 'success');
-        return true;
-    }
-
-    return false;
-}
-
-// ==================== CALCULAR PIPS ====================
-function calculatePips(entry, exit, isBuy) {
-    const difference = Math.abs(exit - entry);
-    return parseFloat((difference * 10000).toFixed(2)); // 4 decimales → pips
-}
-
-// ==================== SISTEMA DE PUNTUACIÓN ====================
-function calculateKrakenScore(sym) {
-    const st = pairState[sym];
-    if (!st || st.ema[2] === null || st.ema[5] === null || st.ema[13] === null || st.ema[34] === null) return 0;
-    
-    let score = 0;
-    const isBoom = sym.includes('BOOM');
-    const price = st.price;
-    const ema2 = st.ema[2], ema5 = st.ema[5], ema13 = st.ema[13], ema34 = st.ema[34];
-    const prevEma13 = st.prevEma[13], prevEma34 = st.prevEma[34];
-    const rsi = st._rsi || 50, adx = st._adx || 20;
-
-    if (st._extreme.detected) score += 2;
-    const isBullishTrend = ema2 > ema5 && ema5 > ema13 && ema13 > ema34;
-    const isBearishTrend = ema2 < ema5 && ema5 < ema13 && ema13 < ema34;
-    if (isBullishTrend || isBearishTrend) score++;
-    if (checkEMAsAlignmentAfterExtreme(sym)) score += 2;
-    if (isBoom && rsi < EXTREME_CONFIG.RSI_OVERSOLD) score++;
-    if (!isBoom && rsi > EXTREME_CONFIG.RSI_OVERBOUGHT) score++;
-    if (adx > ADX_THRESHOLD) score++;
-    if (st._candleConfirmed) score++;
-    const ema13Slope = prevEma13 ? st.ema[13] - prevEma13 : 0;
-    const ema34Slope = prevEma34 ? st.ema[34] - prevEma34 : 0;
-    if ((isBullishTrend && ema13Slope > 0 && ema34Slope > 0) ||
-        (isBearishTrend && ema13Slope < 0 && ema34Slope < 0)) score++;
-    const timeSinceLast = Date.now() - lastSignalTime[sym];
-    if (timeSinceLast > COOLDOWN_MINUTES * 60 * 1000) score++;
-
-    st._lastScore = score;
-    st._lastScoreTime = Date.now();
-    return score;
 }
 
 // ==================== GENERAR SEÑAL ====================
@@ -320,35 +184,39 @@ function generateSignal(sym) {
 
     const isBoom = sym.includes('BOOM');
     const price = st.price;
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
+    const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
+    const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
-    if (!isBullishTrend && !isBearishTrend) return;
+    // BOOM → SOPORTE + EMAS ALCISTAS → COMPRA
+    // CRASH → RESISTENCIA + EMAS BAJISTAS → VENTA
+    let condition = false;
+    if (isBoom && isBullish && st._support && st._supportCount >= 2) {
+        const nearSupport = Math.abs(price - st._support) / st._support < 0.005;
+        if (nearSupport && price > st._support) condition = true;
+    }
+    if (!isBoom && isBearish && st._resistance && st._resistanceCount >= 2) {
+        const nearResistance = Math.abs(price - st._resistance) / st._resistance < 0.005;
+        if (nearResistance && price < st._resistance) condition = true;
+    }
+
+    if (!condition) return;
 
     const slPrice = parseFloat(st.ema[34].toFixed(4));
-    const riskDistance = Math.abs(price - slPrice);
-    const tp = parseFloat((price + (isBullishTrend ? riskDistance : -riskDistance)).toFixed(4));
-
-    const extremeType = st._extreme.type === 'oversold' ? 'OVERSOLD (Bajada Extrema)' : 'OVERBOUGHT (Subida Extrema)';
-    const extremeEmoji = st._extreme.type === 'oversold' ? '📉' : '📈';
-    const movementPct = st._extreme.movement ? st._extreme.movement.toFixed(2) : '0';
-
-    // 📊 Calcular pips potenciales
-    const potentialPips = calculatePips(price, tp, isBullishTrend);
+    const risk = Math.abs(price - slPrice);
+    const tp = parseFloat((price + (isBullish ? risk : -risk)).toFixed(4));
+    const pips = parseFloat((risk * 10000).toFixed(2));
 
     const signal = {
         sym,
-        type: isBoom && isBullishTrend ? 'MULTUP' : 'MULTDOWN',
+        type: isBoom && isBullish ? 'MULTUP' : 'MULTDOWN',
         price,
         tp,
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
         status: 'PENDIENTE',
-        score: st._lastScore,
-        extreme: extremeType,
-        movement: movementPct,
-        rsi: st._rsi,
-        potentialPips: potentialPips
+        sr: isBoom ? 'SOPORTE' : 'RESISTENCIA',
+        srPrice: isBoom ? st._support : st._resistance,
+        pips: pips
     };
 
     st.lastSignal = signal;
@@ -363,22 +231,20 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
+    const srEmoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
 
-    // 📊 Mensaje con pips potenciales
-    const telegramMsg =
-        `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
+    const msg =
+        `${emoji} 🐙 KRAKEN PRO\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
-        `<b>Extremo:</b> ${extremeEmoji} ${extremeType}\n` +
-        `<b>Movimiento:</b> ${movementPct}%\n` +
-        `<b>RSI:</b> ${signal.rsi.toFixed(1)}\n` +
+        `<b>${signal.sr}:</b> $${signal.srPrice.toFixed(4)}\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
-        `<b>TP:</b> $${signal.tp} 🎯 (${signal.potentialPips} pips)\n` +
+        `<b>TP:</b> $${signal.tp} 🎯 (${signal.pips} pips)\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | ${extremeType} | Mov: ${movementPct}% | RSI: ${signal.rsi.toFixed(1)} | Pips: ${signal.potentialPips}`, 'signal');
-    sendTelegramMessage(telegramMsg);
+    addLog(`🔔 ${sym}: ${dir} | ${signal.sr} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
+    sendTelegramMessage(msg);
 }
 
 // ==================== ANALIZAR ====================
@@ -391,46 +257,19 @@ function analyzeTrendStart(sym) {
         if (!st || st.ema[2] === null) { isProcessingQueue = false; processNextInQueue(); return; }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
 
-        st._rsi = calculateRSI(st.candles);
-        st._adx = calculateADX(st.candles);
-
-        detectExtremeMovement(sym);
-
-        const candleConfirmed = checkCandleConfirmation(sym);
-        if (candleConfirmed && !st._candleConfirmed) {
-            st._candleConfirmed = true;
-            addLog(`✅ ${sym}: VELA DE CONFIRMACIÓN`, 'success');
-        }
-
-        const score = calculateKrakenScore(sym);
-        const isBoom = sym.includes('BOOM');
-        const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-        const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
-
-        if (st._extreme.detected && (!st._lastScoreTime || Date.now() - st._lastScoreTime > 60000)) {
-            const extremeLabel = st._extreme.type === 'oversold' ? 'OVERSOLD' : 'OVERBOUGHT';
-            addLog(`📊 ${sym}: SCORE ${score}/10 | ${extremeLabel} ${st._extreme.movement.toFixed(2)}% | RSI: ${st._rsi.toFixed(1)} | ADX: ${st._adx.toFixed(1)}`, 'score');
-        }
+        detectSR(sym);
 
         if (st.lastSignal && !st.signalExpired) {
             checkSignalExpiry(sym);
             isProcessingQueue = false; processNextInQueue(); return;
         }
 
-        let allowedDirection = false;
-        let signalType = null;
-        if (isBoom && isBullishTrend) { allowedDirection = true; signalType = 'MULTUP'; }
-        else if (!isBoom && isBearishTrend) { allowedDirection = true; signalType = 'MULTDOWN'; }
-
-        const hasExtreme = st._extreme.detected;
-        const emasAligned = isBullishTrend || isBearishTrend;
-
-        if (score >= MIN_SCORE && !st.lastSignal && !st.signalExpired && allowedDirection && hasExtreme && emasAligned) {
-            generateSignal(sym);
-            st._pullbackDetected = false;
-            st._candleConfirmed = false;
+        const timeSinceLast = Date.now() - lastSignalTime[sym];
+        if (timeSinceLast < 300000) { // 5 min
             isProcessingQueue = false; processNextInQueue(); return;
         }
+
+        generateSignal(sym);
 
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
 
@@ -444,7 +283,7 @@ function processNextInQueue() {
     }
 }
 
-// ==================== CHECK SIGNAL EXPIRY CON PIPS ====================
+// ==================== CHECK SIGNAL EXPIRY ====================
 function checkSignalExpiry(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
@@ -455,41 +294,29 @@ function checkSignalExpiry(sym) {
     const sl = st._slPrice || signal.sl;
     const tp = st._tpPrice || signal.tp;
     const entry = st._entryPrice || signal.price;
-    const isBuy = signal.type === 'MULTUP';
 
     if (!st._tp1Hit) {
         if ((isBoom && price >= tp) || (!isBoom && price <= tp)) {
             st._tp1Hit = true;
             st.signalExpired = true;
             wins++;
-            
-            // 📊 Calcular pips de ganancia
-            const pipsGained = calculatePips(entry, price, isBuy);
-            botStats.totalPipsGained += pipsGained;
-            botStats.netPips += pipsGained;
+            const pips = parseFloat((Math.abs(price - entry) * 10000).toFixed(2));
+            botStats.totalPipsGained += pips;
+            botStats.netPips += pips;
             botStats.totalTrades++;
-            
-            if (pipsGained > botStats.bestTradePips) {
-                botStats.bestTradePips = pipsGained;
-            }
-            
-            st._pips = pipsGained;
+            st._pips = pips;
             st._isWin = true;
-            
-            addLog(`🎯 TP ALCANZADO en ${sym} | +${pipsGained} pips`, 'success');
-            
+            addLog(`🎯 TP ALCANZADO en ${sym} | +${pips} pips`, 'success');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-            
             sendTelegramMessage(
-                `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
+                `${emoji} 🐙 KRAKEN PRO\n\n` +
                 `<b>Par:</b> ${sym}\n` +
                 `<b>Dirección:</b> ${dir}\n` +
                 `✅ TP ALCANZADO 🎯\n` +
-                `<b>Pips:</b> +${pipsGained} pips 📈\n\n` +
+                `<b>Pips:</b> +${pips} 📈\n\n` +
                 `⏰ ${new Date().toLocaleTimeString()}`
             );
-            
             resetPairState(sym);
             return;
         }
@@ -499,34 +326,23 @@ function checkSignalExpiry(sym) {
         if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
             st.signalExpired = true;
             losses++;
-            
-            // 📊 Calcular pips de pérdida
-            const pipsLost = calculatePips(entry, price, isBuy);
-            botStats.totalPipsLost += pipsLost;
-            botStats.netPips -= pipsLost;
+            const pips = parseFloat((Math.abs(price - entry) * 10000).toFixed(2));
+            botStats.totalPipsLost += pips;
+            botStats.netPips -= pips;
             botStats.totalTrades++;
-            
-            if (pipsLost > botStats.worstTradePips) {
-                botStats.worstTradePips = pipsLost;
-            }
-            
-            st._pips = -pipsLost;
+            st._pips = -pips;
             st._isWin = false;
-            
-            addLog(`❌ SL ALCANZADO en ${sym} | -${pipsLost} pips`, 'error');
-            
+            addLog(`❌ SL ALCANZADO en ${sym} | -${pips} pips`, 'error');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-            
             sendTelegramMessage(
-                `${emoji} 🐙 KRAKEN PRO 2.0\n\n` +
+                `${emoji} 🐙 KRAKEN PRO\n\n` +
                 `<b>Par:</b> ${sym}\n` +
                 `<b>Dirección:</b> ${dir}\n` +
                 `❌ SL ALCANZADO 🛑\n` +
-                `<b>Pips:</b> -${pipsLost} pips 📉\n\n` +
+                `<b>Pips:</b> -${pips} 📉\n\n` +
                 `⏰ ${new Date().toLocaleTimeString()}`
             );
-            
             resetPairState(sym);
             return;
         }
@@ -540,44 +356,11 @@ function resetPairState(sym) {
     st.signalExpired = false;
     st._trendStarted = false;
     st._tp1Hit = false;
-    st._pullbackDetected = false;
-    st._candleConfirmed = false;
-    st.waitingForNewTrend = false;
-    st.lastTrend = null;
     st._entryPrice = null;
     st._tpPrice = null;
     st._slPrice = null;
-    st._extreme.detected = false;
-    st._extreme.type = null;
     st._pips = 0;
     st._isWin = false;
-}
-
-// ==================== CONFIRMACIÓN DE VELA ====================
-function checkCandleConfirmation(sym) {
-    const st = pairState[sym];
-    if (!st || st._lastCandleOpen === null || st._lastCandleClose === null) return false;
-
-    const isBullishTrend = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-    const isBearishTrend = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
-
-    if (!isBullishTrend && !isBearishTrend) return false;
-
-    if (isBullishTrend) {
-        const isBullishCandle = st._lastCandleClose > st._lastCandleOpen;
-        const range = st._lastCandleClose - st._lastCandleOpen;
-        const nearTop = range > 0 && (st._lastCandleClose - st._lastCandleOpen) / range > 0.5;
-        return isBullishCandle && nearTop;
-    }
-
-    if (isBearishTrend) {
-        const isBearishCandle = st._lastCandleClose < st._lastCandleOpen;
-        const range = st._lastCandleOpen - st._lastCandleClose;
-        const nearBottom = range > 0 && (st._lastCandleOpen - st._lastCandleClose) / range > 0.5;
-        return isBearishCandle && nearBottom;
-    }
-
-    return false;
 }
 
 // ==================== WEBSOCKET ====================
@@ -635,8 +418,6 @@ function handleMsg(data) {
                 st.candles.push(st.price);
                 if (st.candles.length > 500) st.candles.shift();
                 calcEMAs(sym);
-                st._pullbackDetected = false;
-                st._candleConfirmed = false;
                 if (dataLoaded && signalsActive) { analyzeTrendStart(sym); }
                 if (st.lastSignal && !st.signalExpired) {
                     checkSignalExpiry(sym);
@@ -653,19 +434,17 @@ function openWS(url) {
     ws = new WebSocket(url);
     ws.onopen = () => {
         addLog('✅ Conectado a Deriv WebSocket', 'success');
-        const candleCount = 500;
         ALL_PAIRS.forEach(p => {
-            ws.send(JSON.stringify({ ticks_history: p, count: candleCount, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
+            ws.send(JSON.stringify({ ticks_history: p, count: 500, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
         });
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO 2.0 - SEÑALES ACTIVADAS (MOVIMIENTO EXTREMO + PIPS)`, 'start');
-            
+            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO 2.0 ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 Estrategia: REVERSIÓN EXTREMA\n📉 BOOM: Oversold → COMPRAS\n📈 CRASH: Overbought → VENTAS\n📊 PIPS: Cálculo y conteo automático\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 ESTRATEGIA PURA\n📊 ACCIÓN DEL PRECIO + EMAS\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -727,19 +506,15 @@ app.get('/api/stats', (req, res) => {
         totalSignals: totalSignals,
         wins: wins,
         losses: losses,
-        // 📊 Estadísticas de pips
         totalPipsGained: botStats.totalPipsGained,
         totalPipsLost: botStats.totalPipsLost,
         netPips: botStats.netPips,
-        bestTradePips: botStats.bestTradePips,
-        worstTradePips: botStats.worstTradePips,
-        avgPipsPerTrade: botStats.totalTrades > 0 ? (botStats.netPips / botStats.totalTrades).toFixed(2) : 0,
         logs: tradeLogs.slice(0, 50)
     });
 });
 
 app.get('/ping', (req, res) => {
-    res.status(200).send('🐙 KRAKEN PRO 2.0 - Activo ' + new Date().toISOString());
+    res.status(200).send('🐙 KRAKEN PRO - Activo ' + new Date().toISOString());
 });
 
 const PORT = process.env.PORT || 3000;
@@ -748,17 +523,14 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔗 https://kraken-pro-bot-production.up.railway.app`);
 });
 
-console.log('⏰ KRAKEN PRO 2.0 - 24/7 ACTIVO');
-console.log('🎯 ESTRATEGIA: REVERSIÓN EXTREMA');
-console.log('📉 BOOM: Oversold → COMPRAS');
-console.log('📈 CRASH: Overbought → VENTAS');
-console.log('📊 PIPS: Cálculo y conteo automático');
+console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
+console.log('🎯 ESTRATEGIA PURA: ACCIÓN DEL PRECIO + EMAS');
 
 // ==================== INICIO ====================
-addLog('🎯 Iniciando KRAKEN PRO 2.0 con PIPS...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (ESTRATEGIA PURA)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO 2.0 INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos monitoreados\n🎯 Estrategia: REVERSIÓN EXTREMA\n📉 BOOM: Oversold → COMPRAS\n📈 CRASH: Overbought → VENTAS\n📊 PIPS: Cálculo y conteo automático\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 ESTRATEGIA PURA\n📊 ACCIÓN DEL PRECIO + EMAS\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
