@@ -3,102 +3,206 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐙 KRAKEN PRO 2.0 - Monitor</title>
+    <title>🐙 KRAKEN PRO - Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            background: #060a18;
             min-height: 100vh;
-            color: #fff;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             padding: 20px;
         }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: #0d1528;
+            border: 1px solid #1a2a4a;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 0 60px rgba(0, 212, 255, 0.04);
         }
-        .logo { font-size: 24px; font-weight: bold; background: linear-gradient(135deg,#667eea,#764ba2); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-        .status { display: flex; align-items: center; gap: 10px; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; background: #00c853; box-shadow: 0 0 10px #00c853; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .badge { background: rgba(0,200,83,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; border: 1px solid rgba(0,200,83,0.3); }
-        .badge.auto { border-color: #ffc107; background: rgba(255,193,7,0.2); color: #ffc107; }
-        .badge.score { border-color: #8b5cf6; background: rgba(139,92,246,0.2); color: #8b5cf6; }
-
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .header .icon {
+            font-size: 2.5rem;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            font-weight: 800;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-top: 4px;
+        }
+        .header .sub {
+            font-size: 0.65rem;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 20px;
+            font-size: 0.6rem;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .status-text {
+            color: #10b981;
+            font-weight: 600;
+        }
         .stats-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px; margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
         }
         .stat-card {
-            background: rgba(255,255,255,0.08); padding: 15px; border-radius: 12px; text-align: center;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid #1a2a4a;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
         }
-        .stat-label { font-size: 12px; opacity: 0.7; }
-        .stat-value { font-size: 24px; font-weight: bold; margin-top: 5px; }
-        .stat-value.green { color: #00c853; }
-        .stat-value.red { color: #ff5252; }
-        .stat-value.blue { color: #64b5f6; }
-        .stat-value.purple { color: #8b5cf6; }
-
-        .logs-panel {
-            background: rgba(0,0,0,0.5); border-radius: 12px; padding: 15px; max-height: 500px; overflow-y: auto;
+        .stat-card .label {
+            font-size: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+            font-weight: 600;
         }
-        .logs-panel h3 { margin-bottom: 10px; color: #667eea; }
-        .log-entry { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; font-family: monospace; }
-        .log-win { color: #00c853; }
-        .log-loss { color: #ff5252; }
-        .log-warning { color: #ffc107; }
-        .log-success { color: #00c853; }
-        .log-info { color: #64b5f6; }
-        .log-signal { color: #00d4ff; font-weight: 700; }
-        .log-score { color: #8b5cf6; font-weight: 600; }
-        .log-trend { color: #f59e0b; font-weight: 600; }
-        .log-start { color: #10b981; font-weight: 700; }
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: monospace;
+            margin-top: 4px;
+        }
+        .value.green { color: #10b981; }
+        .value.red { color: #ef4444; }
+        .value.blue { color: #00d4ff; }
+        .value.gold { color: #f59e0b; }
+        .value.purple { color: #8b5cf6; }
 
-        .footer { margin-top: 20px; text-align: center; opacity: 0.5; font-size: 12px; }
+        .stat-card.full {
+            grid-column: 1 / -1;
+        }
+
+        .log-section {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-section .title {
+            font-size: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .log-entry {
+            font-size: 0.55rem;
+            font-family: monospace;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .log-entry .time { color: #64748b; }
+        .log-entry .win { color: #10b981; }
+        .log-entry .loss { color: #ef4444; }
+        .log-entry .signal { color: #00d4ff; }
+        .log-entry .info { color: #94a3b8; }
+
+        .footer {
+            text-align: center;
+            font-size: 0.5rem;
+            color: #475569;
+            margin-top: 16px;
+            border-top: 1px solid #1a2a4a;
+            padding-top: 12px;
+        }
+
+        /* scroll */
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: #060a18; }
+        ::-webkit-scrollbar-thumb { background: #1a2a4a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
+
+        @media (max-width: 480px) {
+            .container { padding: 16px; }
+            .stat-card .value { font-size: 1.2rem; }
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <div class="logo">🐙 KRAKEN PRO 2.0</div>
-        <div class="status">
-            <span class="dot"></span>
-            <span>24/7 Activo</span>
-            <span class="badge auto">Auto-inicio</span>
-            <span class="badge score">⭐ Score 9+</span>
+        <div class="icon">🐙</div>
+        <h1>KRAKEN PRO</h1>
+        <div class="sub">Estrategia Pura · Acción del Precio + EMAs</div>
+    </div>
+
+    <div class="status-bar">
+        <span><span class="status-dot"></span><span class="status-text">24/7 Activo</span></span>
+        <span style="color:#64748b;font-size:0.55rem;">📡 <span id="signal-count">0</span> señales</span>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="label">🏆 Win Rate</div>
+            <div class="value blue" id="winrate">0%</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📈 Pips Netos</div>
+            <div class="value gold" id="net-pips">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">✅ Ganadas</div>
+            <div class="value green" id="wins">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">❌ Perdidas</div>
+            <div class="value red" id="losses">0</div>
+        </div>
+        <div class="stat-card full">
+            <div class="label">📊 Total Operaciones</div>
+            <div class="value purple" id="total-trades">0</div>
         </div>
     </div>
 
-    <div class="stats-grid" id="statsGrid">
-        <div class="stat-card">
-            <div class="stat-label">💰 Balance</div>
-            <div class="stat-value green" id="balance">$0.00</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">📈 Profit Total</div>
-            <div class="stat-value" id="profit">$0.00</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">🏆 Win Rate</div>
-            <div class="stat-value blue" id="winRate">0%</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">📡 Señales</div>
-            <div class="stat-value purple" id="signals">0</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">✅ Wins / ❌ Losses</div>
-            <div class="stat-value" id="winsLosses">0 / 0</div>
+    <div class="log-section">
+        <div class="title">📋 Últimas operaciones</div>
+        <div id="logs-container">
+            <div style="color:#475569;font-size:0.55rem;text-align:center;padding:10px;">Esperando operaciones...</div>
         </div>
     </div>
 
-    <div class="logs-panel">
-        <h3>📋 Historial de Operaciones</h3>
-        <div id="logsContainer"></div>
-    </div>
-
-    <div class="footer">🐙 KRAKEN PRO 2.0 - Ejecutándose automáticamente 24/7 · Solo visualización</div>
+    <div class="footer">🐙 KRAKEN PRO · 24/7 · Railway</div>
 </div>
 
 <script>
@@ -106,22 +210,31 @@
         fetch('/api/stats')
             .then(res => res.json())
             .then(data => {
-                document.getElementById('balance').textContent = `$${data.balance.toFixed(2)}`;
-                const profit = document.getElementById('profit');
-                profit.textContent = `${data.totalProfit >= 0 ? '+' : ''}$${data.totalProfit.toFixed(2)}`;
-                profit.className = 'stat-value ' + (data.totalProfit >= 0 ? 'green' : 'red');
-                const wr = data.totalTrades > 0 ? (data.winCount / data.totalTrades * 100).toFixed(1) : 0;
-                document.getElementById('winRate').textContent = `${wr}%`;
-                document.getElementById('signals').textContent = data.totalSignals || 0;
-                document.getElementById('winsLosses').textContent = `${data.winCount} / ${data.lossCount}`;
-                const container = document.getElementById('logsContainer');
+                const total = data.wins + data.losses;
+                const wr = total > 0 ? Math.round((data.wins / total) * 100) : 0;
+
+                document.getElementById('winrate').textContent = wr + '%';
+                document.getElementById('net-pips').textContent = (data.netPips || 0).toFixed(1);
+                document.getElementById('wins').textContent = data.wins || 0;
+                document.getElementById('losses').textContent = data.losses || 0;
+                document.getElementById('total-trades').textContent = total;
+                document.getElementById('signal-count').textContent = data.totalSignals || 0;
+
+                const container = document.getElementById('logs-container');
                 container.innerHTML = '';
-                data.logs.forEach(log => {
-                    const div = document.createElement('div');
-                    div.className = `log-entry log-${log.type}`;
-                    div.textContent = `[${log.time}] ${log.msg}`;
-                    container.appendChild(div);
-                });
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.slice(0, 20).forEach(log => {
+                        const div = document.createElement('div');
+                        div.className = 'log-entry';
+                        const typeClass = log.type === 'win' ? 'win' :
+                                         log.type === 'loss' ? 'loss' :
+                                         log.type === 'signal' ? 'signal' : 'info';
+                        div.innerHTML = `<span class="time">[${log.time}]</span> <span class="${typeClass}">${log.msg}</span>`;
+                        container.appendChild(div);
+                    });
+                } else {
+                    container.innerHTML = '<div style="color:#475569;font-size:0.55rem;text-align:center;padding:10px;">Esperando operaciones...</div>';
+                }
             })
             .catch(() => {});
     }
