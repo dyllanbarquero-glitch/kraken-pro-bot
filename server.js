@@ -4,10 +4,8 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO - ESTRATEGIA PURA');
-console.log('📊 ACCIÓN DEL PRECIO + EMAS');
-console.log('🎯 SIN PARÁMETROS - SIN FILTROS');
+console.log('📊 SOPORTE (BOOM) / RESISTENCIA (CRASH)');
 
-// ==================== CONFIGURACIÓN ====================
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
 const EMA_PERIODS = [2, 5, 13, 34];
@@ -18,7 +16,6 @@ const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863a
 const TELEGRAM_TOKEN = '8345003490:AAGhSXXzdltZ5dS2Civ4l0ld0dXJScQbsBo';
 const TELEGRAM_CHAT = '-1003177595391';
 
-// ==================== ESTADO ====================
 let ws = null;
 let signalsActive = false;
 let running = false;
@@ -72,7 +69,6 @@ ALL_PAIRS.forEach(p => {
     lastSignalTime[p] = 0;
 });
 
-// ==================== LOGS ====================
 function addLog(msg, type = 'info') {
     const time = new Date().toLocaleTimeString();
     tradeLogs.unshift({ time, msg, type });
@@ -80,7 +76,6 @@ function addLog(msg, type = 'info') {
     console.log(`[${time}] ${msg}`);
 }
 
-// ==================== TELEGRAM ====================
 async function sendTelegramMessage(message) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -101,7 +96,6 @@ async function sendTelegramMessage(message) {
     }
 }
 
-// ==================== EMAS ====================
 function calculateEMA(prices, period) {
     if (prices.length < period) return null;
     let sum = 0;
@@ -121,7 +115,6 @@ function calcEMAs(sym) {
     });
 }
 
-// ==================== DETECTAR SOPORTE/RESISTENCIA ====================
 function detectSR(sym) {
     const st = pairState[sym];
     if (!st || st.candles.length < 20) return;
@@ -141,7 +134,7 @@ function detectSR(sym) {
         const prev = candles[i - 1] || price;
         const next = candles[i + 1] || price;
 
-        // Mínimo (soporte)
+        // Mínimo (soporte - piso)
         if (price < prev && price < next && price < candles[i - 2] && price < candles[i + 2]) {
             if (support === null || Math.abs(price - support) / support < 0.005) {
                 support = support !== null ? (support + price) / 2 : price;
@@ -152,7 +145,7 @@ function detectSR(sym) {
             }
         }
 
-        // Máximo (resistencia)
+        // Máximo (resistencia - techo)
         if (price > prev && price > next && price > candles[i - 2] && price > candles[i + 2]) {
             if (resistance === null || Math.abs(price - resistance) / resistance < 0.005) {
                 resistance = resistance !== null ? (resistance + price) / 2 : price;
@@ -170,14 +163,18 @@ function detectSR(sym) {
     st._resistanceCount = resistanceCount;
 
     if (support && supportCount >= 2) {
-        addLog(`📊 ${sym}: SOPORTE en $${support.toFixed(4)} (${supportCount} toques)`, 'trend');
+        addLog(`📊 ${sym}: SOPORTE (piso) en $${support.toFixed(4)} (${supportCount} toques)`, 'trend');
     }
     if (resistance && resistanceCount >= 2) {
-        addLog(`📊 ${sym}: RESISTENCIA en $${resistance.toFixed(4)} (${resistanceCount} toques)`, 'trend');
+        addLog(`📊 ${sym}: RESISTENCIA (techo) en $${resistance.toFixed(4)} (${resistanceCount} toques)`, 'trend');
     }
 }
 
-// ==================== GENERAR SEÑAL ====================
+function calculatePips(price1, price2) {
+    // Para BOOM/CRASH, 1 pip = 0.0001 (4 decimales)
+    return parseFloat((Math.abs(price2 - price1) * 10000).toFixed(2));
+}
+
 function generateSignal(sym) {
     const st = pairState[sym];
     if (!st || st.lastSignal && !st.signalExpired) return;
@@ -187,16 +184,31 @@ function generateSignal(sym) {
     const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
     const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
 
-    // BOOM → SOPORTE + EMAS ALCISTAS → COMPRA
-    // CRASH → RESISTENCIA + EMAS BAJISTAS → VENTA
+    // ✅ BOOM → SOPORTE (piso) + EMAS ALCISTAS → COMPRA
+    // ✅ CRASH → RESISTENCIA (techo) + EMAS BAJISTAS → VENTA
     let condition = false;
+    let srType = '';
+    let srPrice = 0;
+    let srCount = 0;
+
     if (isBoom && isBullish && st._support && st._supportCount >= 2) {
         const nearSupport = Math.abs(price - st._support) / st._support < 0.005;
-        if (nearSupport && price > st._support) condition = true;
+        if (nearSupport && price > st._support) {
+            condition = true;
+            srType = 'SOPORTE (piso)';
+            srPrice = st._support;
+            srCount = st._supportCount;
+        }
     }
+
     if (!isBoom && isBearish && st._resistance && st._resistanceCount >= 2) {
         const nearResistance = Math.abs(price - st._resistance) / st._resistance < 0.005;
-        if (nearResistance && price < st._resistance) condition = true;
+        if (nearResistance && price < st._resistance) {
+            condition = true;
+            srType = 'RESISTENCIA (techo)';
+            srPrice = st._resistance;
+            srCount = st._resistanceCount;
+        }
     }
 
     if (!condition) return;
@@ -204,7 +216,7 @@ function generateSignal(sym) {
     const slPrice = parseFloat(st.ema[34].toFixed(4));
     const risk = Math.abs(price - slPrice);
     const tp = parseFloat((price + (isBullish ? risk : -risk)).toFixed(4));
-    const pips = parseFloat((risk * 10000).toFixed(2));
+    const pips = calculatePips(price, tp);
 
     const signal = {
         sym,
@@ -214,8 +226,9 @@ function generateSignal(sym) {
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
         status: 'PENDIENTE',
-        sr: isBoom ? 'SOPORTE' : 'RESISTENCIA',
-        srPrice: isBoom ? st._support : st._resistance,
+        srType: srType,
+        srPrice: srPrice,
+        srCount: srCount,
         pips: pips
     };
 
@@ -231,23 +244,21 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-    const srEmoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
 
     const msg =
         `${emoji} 🐙 KRAKEN PRO\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
-        `<b>${signal.sr}:</b> $${signal.srPrice.toFixed(4)}\n` +
+        `<b>${srType}:</b> $${signal.srPrice.toFixed(4)} (${signal.srCount} toques)\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP:</b> $${signal.tp} 🎯 (${signal.pips} pips)\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | ${signal.sr} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | ${srType} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
     sendTelegramMessage(msg);
 }
 
-// ==================== ANALIZAR ====================
 function analyzeTrendStart(sym) {
     if (isProcessingQueue) { analysisQueue.push(sym); return; }
     isProcessingQueue = true;
@@ -265,7 +276,7 @@ function analyzeTrendStart(sym) {
         }
 
         const timeSinceLast = Date.now() - lastSignalTime[sym];
-        if (timeSinceLast < 300000) { // 5 min
+        if (timeSinceLast < 300000) {
             isProcessingQueue = false; processNextInQueue(); return;
         }
 
@@ -283,7 +294,6 @@ function processNextInQueue() {
     }
 }
 
-// ==================== CHECK SIGNAL EXPIRY ====================
 function checkSignalExpiry(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
@@ -300,7 +310,7 @@ function checkSignalExpiry(sym) {
             st._tp1Hit = true;
             st.signalExpired = true;
             wins++;
-            const pips = parseFloat((Math.abs(price - entry) * 10000).toFixed(2));
+            const pips = calculatePips(entry, price);
             botStats.totalPipsGained += pips;
             botStats.netPips += pips;
             botStats.totalTrades++;
@@ -326,7 +336,7 @@ function checkSignalExpiry(sym) {
         if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
             st.signalExpired = true;
             losses++;
-            const pips = parseFloat((Math.abs(price - entry) * 10000).toFixed(2));
+            const pips = calculatePips(entry, price);
             botStats.totalPipsLost += pips;
             botStats.netPips -= pips;
             botStats.totalTrades++;
@@ -363,7 +373,6 @@ function resetPairState(sym) {
     st._isWin = false;
 }
 
-// ==================== WEBSOCKET ====================
 function handleMsg(data) {
     if (data.error) {
         const err = data.error.message || '';
@@ -444,7 +453,7 @@ function openWS(url) {
             addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 ESTRATEGIA PURA\n📊 ACCIÓN DEL PRECIO + EMAS\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)\n📊 EMAs 2,5,13,34\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -489,7 +498,6 @@ async function connectDeriv() {
     }
 }
 
-// ==================== SERVIDOR WEB ====================
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
@@ -524,13 +532,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 ESTRATEGIA PURA: ACCIÓN DEL PRECIO + EMAS');
+console.log('🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)');
 
-// ==================== INICIO ====================
-addLog('🎯 Iniciando KRAKEN PRO (ESTRATEGIA PURA)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 ESTRATEGIA PURA\n📊 ACCIÓN DEL PRECIO + EMAS\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 SOPORTE (BOOM) / RESISTENCIA (CRASH)\n📊 EMAs 2,5,13,34\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
