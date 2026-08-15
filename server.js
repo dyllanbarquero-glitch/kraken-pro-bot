@@ -3,12 +3,11 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO - ESTRUCTURA DE MERCADO');
-console.log('📊 IMPULSO + RETROCESO (AMBAS DIRECCIONES)');
+console.log('🐙 KRAKEN PRO - VALIDACIÓN 1-2-3');
+console.log('📊 IMPULSO → RETROCESO → IMPULSO QUE SUPERA → RETESTEO');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const EMA_PERIODS = [2, 5, 13, 34];
 const TIMEFRAME = 60;
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -44,41 +43,35 @@ let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
 
-let activeTrend = {};
-
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
-        price: null, ema: {}, prevEma: {}, candles: [], loaded: false,
-        lastTrend: null, waitingForNewTrend: false, lastSignal: null,
-        signalExpired: false, _lastCandleClose: null, _lastLogTime: 0,
-        _trendStarted: false, _tp1Hit: false, 
+        price: null, candles: [], loaded: false,
+        lastSignal: null, signalExpired: false,
+        _lastCandleClose: null, _lastLogTime: 0,
+        _tp1Hit: false,
         _entryPrice: null,
         _tpPrice: null,
         _slPrice: null,
-        _support: null,
-        _resistance: null,
-        _supportCount: 0,
-        _resistanceCount: 0,
         _pips: 0,
         _isWin: false,
+        // 🎯 Validación 1-2-3
         _structure: {
-            impulse: null,
-            retracement: null,
-            trend: null,
-            lastImpulseHigh: null,
-            lastImpulseLow: null,
-            lastRetracementHigh: null,
-            lastRetracementLow: null,
-            impulseCount: 0,
-            structureConfirmed: false,
-            lastImpulseDirection: null // 'up' o 'down'
+            step: 0,              // 0=esperando, 1=impulso1, 2=retroceso, 3=impulso2, 4=retesteo
+            impulse1: null,       // Precio del primer impulso
+            retracement: null,    // Precio del retroceso
+            impulse2: null,       // Precio del segundo impulso
+            trend: null,          // 'bullish' o 'bearish'
+            impulse1High: null,
+            impulse1Low: null,
+            retracementHigh: null,
+            retracementLow: null,
+            impulse2High: null,
+            impulse2Low: null,
+            confirmed: false,
+            retestZone: null,
+            retestDetected: false
         }
     };
-    activeTrend[p] = null;
-    EMA_PERIODS.forEach(period => {
-        pairState[p].ema[period] = null;
-        pairState[p].prevEma[period] = null;
-    });
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
     lastSignalTime[p] = 0;
@@ -111,32 +104,13 @@ async function sendTelegramMessage(message) {
     }
 }
 
-function calculateEMA(prices, period) {
-    if (prices.length < period) return null;
-    let sum = 0;
-    for (let i = 0; i < period; i++) sum += prices[i];
-    let ema = sum / period;
-    const k = 2 / (period + 1);
-    for (let i = period; i < prices.length; i++) ema = (prices[i] - ema) * k + ema;
-    return parseFloat(ema.toFixed(4));
-}
-
-function calcEMAs(sym) {
+// 🎯 DETECTAR VALIDACIÓN 1-2-3
+function detectStructure123(sym) {
     const st = pairState[sym];
-    if (!st.candles || st.candles.length < 34) return;
-    const prices = st.candles.slice();
-    EMA_PERIODS.forEach(period => {
-        st.ema[period] = calculateEMA(prices, period);
-    });
-}
-
-// 🎯 DETECTAR ESTRUCTURA DE MERCADO (IMPULSO + RETROCESO)
-function detectMarketStructure(sym) {
-    const st = pairState[sym];
-    if (!st || st.candles.length < 10) return;
+    if (!st || st.candles.length < 20) return;
 
     const candles = st.candles;
-    const lookback = Math.min(20, candles.length - 5);
+    const lookback = Math.min(30, candles.length - 5);
     const start = candles.length - lookback - 5;
     const end = candles.length - 2;
 
@@ -158,173 +132,176 @@ function detectMarketStructure(sym) {
         }
     }
 
+    // 🎯 Buscar patrón 1-2-3
     if (highs.length >= 2 && lows.length >= 2) {
         const lastHigh = highs[highs.length - 1];
         const prevHigh = highs[highs.length - 2];
         const lastLow = lows[lows.length - 1];
         const prevLow = lows[lows.length - 2];
 
-        // 🎯 ESTRUCTURA ALCISTA: cada impulso supera al anterior (subiendo)
-        const isBullish = lastHigh.price > prevHigh.price && lastLow.price > prevLow.price;
-        
-        // 🎯 ESTRUCTURA BAJISTA: cada impulso supera al anterior (bajando)
-        const isBearish = lastHigh.price < prevHigh.price && lastLow.price < prevLow.price;
+        // 📈 ESTRUCTURA ALCISTA: 
+        // Impulso1 (prevLow) → Retroceso (prevHigh) → Impulso2 (lastLow) que supera a Impulso1
+        const isBullish = lastLow.price < prevLow.price && lastHigh.price > prevHigh.price;
 
+        // 📉 ESTRUCTURA BAJISTA:
+        // Impulso1 (prevHigh) → Retroceso (prevLow) → Impulso2 (lastHigh) que supera a Impulso1
+        const isBearish = lastHigh.price > prevHigh.price && lastLow.price < prevLow.price;
+
+        // 📈 ALCISTA: Impulso1 (baja) → Retroceso (sube) → Impulso2 (baja más)
         if (isBullish) {
             st._structure.trend = 'bullish';
-            st._structure.lastImpulseHigh = lastHigh.price;
-            st._structure.lastRetracementLow = lastLow.price;
-            st._structure.structureConfirmed = true;
-            st._structure.lastImpulseDirection = 'up';
-            if (activeTrend[sym] !== 'bullish') {
-                activeTrend[sym] = 'bullish';
-                addLog(`📈 ${sym}: ESTRUCTURA ALCISTA | Impulso sube: $${lastHigh.price.toFixed(4)} | Retroceso: $${lastLow.price.toFixed(4)}`, 'trend');
+            st._structure.impulse1 = prevLow.price;
+            st._structure.retracement = prevHigh.price;
+            st._structure.impulse2 = lastLow.price;
+            st._structure.impulse1Low = prevLow.price;
+            st._structure.retracementHigh = prevHigh.price;
+            st._structure.impulse2Low = lastLow.price;
+            st._structure.step = 3;
+            st._structure.confirmed = true;
+            st._structure.retestZone = prevLow.price + (prevHigh.price - prevLow.price) * 0.5;
+            
+            if (st._structure.step === 3) {
+                addLog(`📈 ${sym}: VALIDACIÓN 1-2-3 ALCISTA | Impulso1: $${prevLow.price.toFixed(4)} | Retroceso: $${prevHigh.price.toFixed(4)} | Impulso2: $${lastLow.price.toFixed(4)} ✅ SUPERA`, 'trend');
             }
-        } else if (isBearish) {
+        } 
+        // 📉 BAJISTA: Impulso1 (sube) → Retroceso (baja) → Impulso2 (sube más)
+        else if (isBearish) {
             st._structure.trend = 'bearish';
-            st._structure.lastImpulseLow = lastLow.price;
-            st._structure.lastRetracementHigh = lastHigh.price;
-            st._structure.structureConfirmed = true;
-            st._structure.lastImpulseDirection = 'down';
-            if (activeTrend[sym] !== 'bearish') {
-                activeTrend[sym] = 'bearish';
-                addLog(`📉 ${sym}: ESTRUCTURA BAJISTA | Impulso baja: $${lastLow.price.toFixed(4)} | Retroceso: $${lastHigh.price.toFixed(4)}`, 'trend');
+            st._structure.impulse1 = prevHigh.price;
+            st._structure.retracement = prevLow.price;
+            st._structure.impulse2 = lastHigh.price;
+            st._structure.impulse1High = prevHigh.price;
+            st._structure.retracementLow = prevLow.price;
+            st._structure.impulse2High = lastHigh.price;
+            st._structure.step = 3;
+            st._structure.confirmed = true;
+            st._structure.retestZone = prevHigh.price - (prevHigh.price - prevLow.price) * 0.5;
+            
+            if (st._structure.step === 3) {
+                addLog(`📉 ${sym}: VALIDACIÓN 1-2-3 BAJISTA | Impulso1: $${prevHigh.price.toFixed(4)} | Retroceso: $${prevLow.price.toFixed(4)} | Impulso2: $${lastHigh.price.toFixed(4)} ✅ SUPERA`, 'trend');
             }
         }
     }
 }
 
-// 🎯 DETECTAR SOPORTE (piso) Y RESISTENCIA (techo)
-function detectSR(sym) {
+// 🎯 DETECTAR RETESTEO (entrada en la zona de retroceso)
+function detectRetest(sym) {
     const st = pairState[sym];
-    if (!st || st.candles.length < 20) return;
+    if (!st || !st._structure.confirmed) return false;
 
-    const candles = st.candles;
-    const lookback = Math.min(20, candles.length - 5);
-    const start = candles.length - lookback - 5;
-    const end = candles.length - 2;
+    const price = st.price;
+    const structure = st._structure;
+    const tolerance = 0.005; // 0.5% de tolerancia
 
-    let support = null;
-    let resistance = null;
-    let supportCount = 0;
-    let resistanceCount = 0;
-
-    for (let i = start; i < end; i++) {
-        const price = candles[i];
-        const prev = candles[i - 1] || price;
-        const next = candles[i + 1] || price;
-
-        if (price < prev && price < next && price < candles[i - 2] && price < candles[i + 2]) {
-            if (support === null || Math.abs(price - support) / support < 0.005) {
-                support = support !== null ? (support + price) / 2 : price;
-                supportCount++;
-            } else if (price < support) {
-                support = price;
-                supportCount = 1;
-            }
-        }
-
-        if (price > prev && price > next && price > candles[i - 2] && price > candles[i + 2]) {
-            if (resistance === null || Math.abs(price - resistance) / resistance < 0.005) {
-                resistance = resistance !== null ? (resistance + price) / 2 : price;
-                resistanceCount++;
-            } else if (price > resistance) {
-                resistance = price;
-                resistanceCount = 1;
-            }
+    if (structure.trend === 'bullish') {
+        // En tendencia alcista, el retesteo es en la zona del retroceso (cerca del máximo del retroceso)
+        const retestZone = structure.retracement;
+        const isNearRetest = Math.abs(price - retestZone) / retestZone < tolerance;
+        const isAbove = price > structure.impulse1; // Precio por encima del impulso1 (soporte)
+        
+        if (isNearRetest && isAbove) {
+            structure.retestDetected = true;
+            structure.step = 4;
+            addLog(`🔄 ${sym}: RETESTEO CONFIRMADO en $${price.toFixed(4)} (zona de retroceso)`, 'trend');
+            return true;
         }
     }
 
-    st._support = support;
-    st._resistance = resistance;
-    st._supportCount = supportCount;
-    st._resistanceCount = resistanceCount;
+    if (structure.trend === 'bearish') {
+        // En tendencia bajista, el retesteo es en la zona del retroceso (cerca del mínimo del retroceso)
+        const retestZone = structure.retracement;
+        const isNearRetest = Math.abs(price - retestZone) / retestZone < tolerance;
+        const isBelow = price < structure.impulse1; // Precio por debajo del impulso1 (resistencia)
+        
+        if (isNearRetest && isBelow) {
+            structure.retestDetected = true;
+            structure.step = 4;
+            addLog(`🔄 ${sym}: RETESTEO CONFIRMADO en $${price.toFixed(4)} (zona de retroceso)`, 'trend');
+            return true;
+        }
+    }
 
-    if (support && supportCount >= 2) {
-        addLog(`📊 ${sym}: SOPORTE (piso) en $${support.toFixed(4)} (${supportCount} toques)`, 'trend');
-    }
-    if (resistance && resistanceCount >= 2) {
-        addLog(`📊 ${sym}: RESISTENCIA (techo) en $${resistance.toFixed(4)} (${resistanceCount} toques)`, 'trend');
-    }
+    return false;
 }
 
 function calculatePips(price1, price2) {
     return parseFloat((Math.abs(price2 - price1) * 10000).toFixed(2));
 }
 
-// 🎯 GENERAR SEÑAL (1 por tendencia)
+// 🎯 GENERAR SEÑAL EN RETESTEO
 function generateSignal(sym) {
     const st = pairState[sym];
     if (!st || st.lastSignal && !st.signalExpired) return;
 
-    // ✅ Solo 1 operación por tendencia
     if (st.lastSignal) {
-        addLog(`⏳ ${sym}: Ya hay operación activa en esta tendencia`, 'info');
+        addLog(`⏳ ${sym}: Ya hay operación activa`, 'info');
         return;
     }
 
     const isBoom = sym.includes('BOOM');
     const price = st.price;
-    const isBullish = st.ema[2] > st.ema[5] && st.ema[5] > st.ema[13] && st.ema[13] > st.ema[34];
-    const isBearish = st.ema[2] < st.ema[5] && st.ema[5] < st.ema[13] && st.ema[13] < st.ema[34];
+    const structure = st._structure;
 
-    // ✅ BOOM → SOPORTE + ESTRUCTURA ALCISTA → COMPRA
-    // ✅ CRASH → RESISTENCIA + ESTRUCTURA BAJISTA → VENTA
+    // ✅ Validación completa: Estructura 1-2-3 confirmada + Retesteo detectado
+    if (!structure.confirmed || !structure.retestDetected) return;
+
+    // 🔴 BOOM solo COMPRAS en estructura ALCISTA
+    // 🔵 CRASH solo VENTAS en estructura BAJISTA
     let condition = false;
     let srType = '';
     let srPrice = 0;
-    let srCount = 0;
 
-    if (isBoom && isBullish && st._support && st._supportCount >= 2) {
-        const nearSupport = Math.abs(price - st._support) / st._support < 0.005;
-        if (nearSupport && price > st._support && st._structure.trend === 'bullish') {
-            condition = true;
-            srType = 'SOPORTE (piso)';
-            srPrice = st._support;
-            srCount = st._supportCount;
-        }
+    if (isBoom && structure.trend === 'bullish') {
+        condition = true;
+        srType = 'RETESTEO (zona de retroceso)';
+        srPrice = structure.retracement;
     }
 
-    if (!isBoom && isBearish && st._resistance && st._resistanceCount >= 2) {
-        const nearResistance = Math.abs(price - st._resistance) / st._resistance < 0.005;
-        if (nearResistance && price < st._resistance && st._structure.trend === 'bearish') {
-            condition = true;
-            srType = 'RESISTENCIA (techo)';
-            srPrice = st._resistance;
-            srCount = st._resistanceCount;
-        }
+    if (!isBoom && structure.trend === 'bearish') {
+        condition = true;
+        srType = 'RETESTEO (zona de retroceso)';
+        srPrice = structure.retracement;
     }
 
     if (!condition) return;
 
-    const slPrice = parseFloat(st.ema[34].toFixed(4));
-    const risk = Math.abs(price - slPrice);
-    const tp = parseFloat((price + (isBullish ? risk : -risk)).toFixed(4));
-    const pips = calculatePips(price, tp);
+    // 🎯 SL y TP basados en la estructura
+    let slPrice, tp, risk;
+    
+    if (isBoom) {
+        // COMPRA: SL debajo del impulso1 (soporte)
+        slPrice = parseFloat((structure.impulse1 * 0.998).toFixed(4));
+        risk = Math.abs(price - slPrice);
+        tp = parseFloat((price + risk).toFixed(4));
+    } else {
+        // VENTA: SL arriba del impulso1 (resistencia)
+        slPrice = parseFloat((structure.impulse1 * 1.002).toFixed(4));
+        risk = Math.abs(price - slPrice);
+        tp = parseFloat((price - risk).toFixed(4));
+    }
 
-    // 🎯 Determinar dirección del último impulso
-    const impulseDir = st._structure.lastImpulseDirection || 'N/A';
-    const trendEmoji = st._structure.trend === 'bullish' ? '📈' : '📉';
+    const pips = calculatePips(price, tp);
+    const trendEmoji = structure.trend === 'bullish' ? '📈' : '📉';
 
     const signal = {
         sym,
-        type: isBoom && isBullish ? 'MULTUP' : 'MULTDOWN',
+        type: isBoom ? 'MULTUP' : 'MULTDOWN',
         price,
         tp,
         sl: slPrice,
         time: new Date().toLocaleTimeString(),
         status: 'PENDIENTE',
-        srType: srType,
-        srPrice: srPrice,
-        srCount: srCount,
+        trend: structure.trend || 'N/A',
+        impulse1: structure.impulse1,
+        retracement: structure.retracement,
+        impulse2: structure.impulse2,
         pips: pips,
-        trend: st._structure.trend || 'N/A',
-        impulseDir: impulseDir
+        srType: srType,
+        srPrice: srPrice
     };
 
     st.lastSignal = signal;
     st.signalExpired = false;
-    st._trendStarted = true;
     st._tp1Hit = false;
     st._entryPrice = price;
     st._tpPrice = tp;
@@ -334,20 +311,22 @@ function generateSignal(sym) {
 
     const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
     const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-    const impulseEmoji = signal.impulseDir === 'up' ? '⬆️' : '⬇️';
 
     const msg =
-        `${emoji} 🐙 KRAKEN PRO\n\n` +
+        `${emoji} 🐙 KRAKEN PRO - VALIDACIÓN 1-2-3\n\n` +
         `<b>Par:</b> ${signal.sym}\n` +
         `<b>Dirección:</b> ${dir}\n` +
-        `<b>Estructura:</b> ${trendEmoji} ${signal.trend.toUpperCase()} (${impulseEmoji} impulso ${signal.impulseDir})\n` +
-        `<b>${srType}:</b> $${signal.srPrice.toFixed(4)} (${signal.srCount} toques)\n` +
+        `<b>Estructura:</b> ${trendEmoji} ${signal.trend.toUpperCase()}\n` +
+        `<b>1️⃣ Impulso 1:</b> $${signal.impulse1.toFixed(4)}\n` +
+        `<b>2️⃣ Retroceso:</b> $${signal.retracement.toFixed(4)}\n` +
+        `<b>3️⃣ Impulso 2:</b> $${signal.impulse2.toFixed(4)} ✅ SUPERA\n` +
+        `<b>🔄 Retesteo:</b> $${signal.price.toFixed(4)}\n\n` +
         `<b>Entrada:</b> $${signal.price}\n` +
         `<b>TP:</b> $${signal.tp} 🎯 (${signal.pips} pips)\n` +
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | Estructura ${signal.trend} | ${srType} $${signal.srPrice.toFixed(4)} | Pips: ${signal.pips}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | 1-2-3 ${signal.trend} | Retesteo: $${price} | Pips: ${signal.pips}`, 'signal');
     sendTelegramMessage(msg);
 }
 
@@ -357,11 +336,16 @@ function analyzeTrendStart(sym) {
 
     try {
         const st = pairState[sym];
-        if (!st || st.ema[2] === null) { isProcessingQueue = false; processNextInQueue(); return; }
+        if (!st || st.candles.length < 20) { isProcessingQueue = false; processNextInQueue(); return; }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
 
-        detectMarketStructure(sym);
-        detectSR(sym);
+        // 🎯 DETECTAR VALIDACIÓN 1-2-3
+        detectStructure123(sym);
+
+        // 🎯 DETECTAR RETESTEO
+        if (st._structure.confirmed) {
+            detectRetest(sym);
+        }
 
         if (st.lastSignal && !st.signalExpired) {
             checkSignalExpiry(sym);
@@ -409,7 +393,6 @@ function checkSignalExpiry(sym) {
             botStats.totalTrades++;
             st._pips = pips;
             st._isWin = true;
-            activeTrend[sym] = null;
             addLog(`🎯 TP ALCANZADO en ${sym} | +${pips} pips`, 'success');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
@@ -436,7 +419,6 @@ function checkSignalExpiry(sym) {
             botStats.totalTrades++;
             st._pips = -pips;
             st._isWin = false;
-            activeTrend[sym] = null;
             addLog(`❌ SL ALCANZADO en ${sym} | -${pips} pips`, 'error');
             const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
             const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
@@ -459,13 +441,20 @@ function resetPairState(sym) {
     if (!st) return;
     st.lastSignal = null;
     st.signalExpired = false;
-    st._trendStarted = false;
     st._tp1Hit = false;
     st._entryPrice = null;
     st._tpPrice = null;
     st._slPrice = null;
     st._pips = 0;
     st._isWin = false;
+    // Resetear estructura para nueva validación 1-2-3
+    st._structure.step = 0;
+    st._structure.confirmed = false;
+    st._structure.retestDetected = false;
+    st._structure.impulse1 = null;
+    st._structure.retracement = null;
+    st._structure.impulse2 = null;
+    st._structure.trend = null;
 }
 
 function handleMsg(data) {
@@ -492,10 +481,7 @@ function handleMsg(data) {
 
         st.candles = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
         st.price = st.candles[st.candles.length - 1];
-        st._lastCandleOpen = candles[candles.length - 2]?.open ? parseFloat(candles[candles.length - 2].open) : st.price;
         st._lastCandleClose = st.price;
-        EMA_PERIODS.forEach(period => { st.prevEma[period] = null; });
-        calcEMAs(sym);
         st.loaded = true;
         dataLoaded = true;
         addLog(`📊 ${sym}: ${st.candles.length} velas cargadas`, 'info');
@@ -516,12 +502,9 @@ function handleMsg(data) {
         if (lastCandleKey[sym] && lastCandleKey[sym] !== candleKey) {
             if (!candleCloseProcessed[sym]) {
                 candleCloseProcessed[sym] = true;
-                st._lastCandleOpen = st.candles[st.candles.length - 1] || st.price;
-                st._lastCandleClose = st.price;
-                EMA_PERIODS.forEach(period => { st.prevEma[period] = st.ema[period]; });
                 st.candles.push(st.price);
                 if (st.candles.length > 500) st.candles.shift();
-                calcEMAs(sym);
+                st._lastCandleClose = st.price;
                 if (dataLoaded && signalsActive) { analyzeTrendStart(sym); }
                 if (st.lastSignal && !st.signalExpired) {
                     checkSignalExpiry(sym);
@@ -545,10 +528,10 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
+            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS (VALIDACIÓN 1-2-3)`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 ESTRUCTURA DE MERCADO\n📊 Impulso + Retroceso (ambas direcciones)\n🔴 BOOM: Soporte + Estructura Alcista → COMPRA\n🔵 CRASH: Resistencia + Estructura Bajista → VENTA\n📌 1 operación por tendencia\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 VALIDACIÓN 1-2-3\n📊 Impulso → Retroceso → Impulso que SUPERA\n🔄 Entrada en RETESTEO\n🔴 BOOM: Estructura ALCISTA → COMPRA\n🔵 CRASH: Estructura BAJISTA → VENTA\n⏰ ${new Date().toLocaleString()}`);
             }
         }, 5000);
     };
@@ -627,12 +610,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 ESTRUCTURA DE MERCADO (Impulso + Retroceso)');
+console.log('🎯 VALIDACIÓN 1-2-3 + RETESTEO');
 
-addLog('🎯 Iniciando KRAKEN PRO con ESTRUCTURA DE MERCADO...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO con VALIDACIÓN 1-2-3...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 ESTRUCTURA DE MERCADO\n📊 Impulso + Retroceso (ambas direcciones)\n📌 1 operación por tendencia\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 VALIDACIÓN 1-2-3\n📊 Impulso → Retroceso → Impulso que SUPERA\n🔄 Entrada en RETESTEO\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
