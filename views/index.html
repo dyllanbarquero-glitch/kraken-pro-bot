@@ -105,11 +105,9 @@
         .value.blue { color: #00d4ff; }
         .value.gold { color: #f59e0b; }
         .value.purple { color: #8b5cf6; }
-
         .stat-card.full {
             grid-column: 1 / -1;
         }
-
         .log-section {
             background: rgba(0,0,0,0.3);
             border-radius: 10px;
@@ -137,7 +135,7 @@
         .log-entry .loss { color: #ef4444; }
         .log-entry .signal { color: #00d4ff; }
         .log-entry .info { color: #94a3b8; }
-
+        .log-entry .spike { color: #ff00ff; }
         .footer {
             text-align: center;
             font-size: 0.5rem;
@@ -146,13 +144,10 @@
             border-top: 1px solid #1a2a4a;
             padding-top: 12px;
         }
-
-        /* scroll */
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: #060a18; }
         ::-webkit-scrollbar-thumb { background: #1a2a4a; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
-
         @media (max-width: 480px) {
             .container { padding: 16px; }
             .stat-card .value { font-size: 1.2rem; }
@@ -164,7 +159,7 @@
     <div class="header">
         <div class="icon">🐙</div>
         <h1>KRAKEN PRO</h1>
-        <div class="sub">Estrategia Pura · Acción del Precio + EMAs</div>
+        <div class="sub">Spike Forecaster · SOLO BOOM</div>
     </div>
 
     <div class="status-bar">
@@ -178,8 +173,8 @@
             <div class="value blue" id="winrate">0%</div>
         </div>
         <div class="stat-card">
-            <div class="label">📈 Pips Netos</div>
-            <div class="value gold" id="net-pips">0</div>
+            <div class="label">📡 Señales</div>
+            <div class="value gold" id="signals">0</div>
         </div>
         <div class="stat-card">
             <div class="label">✅ Ganadas</div>
@@ -210,14 +205,11 @@
         fetch('/api/stats')
             .then(res => res.json())
             .then(data => {
-                const total = data.wins + data.losses;
-                const wr = total > 0 ? Math.round((data.wins / total) * 100) : 0;
-
-                document.getElementById('winrate').textContent = wr + '%';
-                document.getElementById('net-pips').textContent = (data.netPips || 0).toFixed(1);
+                document.getElementById('winrate').textContent = data.winRate + '%';
+                document.getElementById('signals').textContent = data.totalSignals || 0;
                 document.getElementById('wins').textContent = data.wins || 0;
                 document.getElementById('losses').textContent = data.losses || 0;
-                document.getElementById('total-trades').textContent = total;
+                document.getElementById('total-trades').textContent = data.totalTrades || 0;
                 document.getElementById('signal-count').textContent = data.totalSignals || 0;
 
                 const container = document.getElementById('logs-container');
@@ -228,7 +220,8 @@
                         div.className = 'log-entry';
                         const typeClass = log.type === 'win' ? 'win' :
                                          log.type === 'loss' ? 'loss' :
-                                         log.type === 'signal' ? 'signal' : 'info';
+                                         log.type === 'signal' ? 'signal' :
+                                         log.type === 'spike' ? 'spike' : 'info';
                         div.innerHTML = `<span class="time">[${log.time}]</span> <span class="${typeClass}">${log.msg}</span>`;
                         container.appendChild(div);
                     });
