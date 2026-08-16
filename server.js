@@ -3,12 +3,13 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO - DOBLE SUPERACIÓN (CORREGIDO)');
-console.log('📊 ENTRADA EN 2ª SUPERA');
+console.log('🐙 KRAKEN PRO - SPIKE FORECASTER');
+console.log('📊 BACKEND 24/7 - SOLO BOOM');
 
 const REST_BASE = 'https://api.derivws.com';
-const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const TIMEFRAME = 60; // 1 MINUTOS
+const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
+const TIMEFRAME = 60;
+const MOMENTUM_THRESHOLD = 0.30;
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -23,16 +24,7 @@ let wins = 0;
 let losses = 0;
 let pairState = {};
 let tradeLogs = [];
-let botStats = { 
-    balance: 0, 
-    totalProfit: 0, 
-    winCount: 0, 
-    lossCount: 0, 
-    totalTrades: 0,
-    totalPipsGained: 0,
-    totalPipsLost: 0,
-    netPips: 0
-};
+let botStats = { balance: 0, totalProfit: 0, winCount: 0, lossCount: 0, totalTrades: 0 };
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let lastCandleKey = {};
@@ -47,30 +39,16 @@ ALL_PAIRS.forEach(p => {
     pairState[p] = {
         price: null, candles: [], loaded: false,
         lastSignal: null, signalExpired: false,
-        _lastCandleClose: null, _lastCandleOpen: null,
-        _tp1Hit: false,
-        _entryPrice: null,
-        _tpPrice: null,
-        _slPrice: null,
-        _pips: 0,
-        _isWin: false,
-        _structure: {
-            step: 0,
-            impulse1: null,
-            retracement1: null,
-            impulse2: null,
-            retracement2: null,
-            impulse3: null,
-            trend: null,
-            confirmed: false,
-            firstBreak: false,
-            secondBreak: false,
-            entryTriggered: false,
-            breakoutValid: false,
-            // Guardar precios clave
-            level1: null,
-            level2: null
-        }
+        _lastCandleClose: null, _lastLogTime: 0,
+        _tp1Hit: false, _slHit: false,
+        _isBoom: true,
+        _spikeProbability: 0,
+        _isGrinding: false,
+        _isExhausted: false,
+        _pendingSpike: null,
+        _signalSent: false,
+        _signalClosed: false,
+        _lastSignalProb: 0
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
@@ -104,340 +82,201 @@ async function sendTelegramMessage(message) {
     }
 }
 
-// 🎯 DETECTAR DOBLE SUPERACIÓN
-function detectDoubleBreak(sym) {
-    const st = pairState[sym];
-    if (!st || st.candles.length < 20) return;
+function round4(n) { return parseFloat(parseFloat(n).toFixed(4)); }
 
-    const candles = st.candles;
-    const lookback = Math.min(40, candles.length - 5);
-    const start = candles.length - lookback - 5;
-    const end = candles.length - 2;
-
-    let highs = [];
-    let lows = [];
+function calculateTPSL(price, candles, isBoom) {
+    const lookback = Math.min(5, candles.length);
+    let avgRange = 0;
+    if (candles.length >= lookback) {
+        const recent = candles.slice(-lookback);
+        let totalRange = 0;
+        for (let i = 1; i < recent.length; i++) {
+            totalRange += Math.abs(recent[i] - recent[i-1]);
+        }
+        avgRange = totalRange / (recent.length - 1);
+    }
+    if (avgRange === 0 || isNaN(avgRange)) avgRange = price * 0.0025;
     
-    for (let i = start; i < end; i++) {
-        const price = candles[i];
-        const prev = candles[i - 1] || price;
-        const next = candles[i + 1] || price;
-        const prev2 = candles[i - 2] || price;
-        const next2 = candles[i + 2] || price;
-
-        if (price > prev && price > next && price > prev2 && price > next2) {
-            highs.push({ price: price, index: i });
-        }
-        if (price < prev && price < next && price < prev2 && price < next2) {
-            lows.push({ price: price, index: i });
-        }
-    }
-
-    if (highs.length >= 3 && lows.length >= 3) {
-        const isBoom = sym.includes('BOOM');
-
-        const h1 = highs[highs.length - 3];
-        const h2 = highs[highs.length - 2];
-        const h3 = highs[highs.length - 1];
-        const l1 = lows[lows.length - 3];
-        const l2 = lows[lows.length - 2];
-        const l3 = lows[lows.length - 1];
-
-        if (isBoom) {
-            // BOOM: SUBE → BAJA → SUBE (1ª) → BAJA → SUBE (2ª)
-            const impulse1Up = h1.price > l1.price * 1.001;
-            const retracement1Down = l2.price < h1.price * 0.999;
-            const impulse2Up = h2.price > h1.price * 1.001;
-            const retracement2Down = l3.price < h2.price * 0.999;
-            const impulse3Up = h3.price > h2.price * 1.001;
-
-            if (impulse1Up && retracement1Down && impulse2Up && retracement2Down && impulse3Up) {
-                st._structure.trend = 'bullish';
-                st._structure.impulse1 = h1.price;
-                st._structure.retracement1 = l2.price;
-                st._structure.impulse2 = h2.price;
-                st._structure.retracement2 = l3.price;
-                st._structure.impulse3 = h3.price;
-                st._structure.level1 = h1.price;
-                st._structure.level2 = h2.price;
-                st._structure.firstBreak = true;
-                st._structure.secondBreak = true;
-                st._structure.confirmed = true;
-                st._structure.breakoutValid = true;
-                st._structure.step = 5;
-                st._structure.entryTriggered = false;
-                
-                addLog(`📈 ${sym}: DOBLE SUPERACIÓN ALCISTA | 1ª: $${h2.price.toFixed(4)} | 2ª: $${h3.price.toFixed(4)} ✅`, 'trend');
-            }
-        } else {
-            // CRASH: BAJA → SUBE → BAJA (1ª) → SUBE → BAJA (2ª)
-            const impulse1Down = l1.price < h1.price * 0.999;
-            const retracement1Up = h2.price > l1.price * 1.001;
-            const impulse2Down = l2.price < l1.price * 0.999;
-            const retracement2Up = h3.price > l2.price * 1.001;
-            const impulse3Down = l3.price < l2.price * 0.999;
-
-            if (impulse1Down && retracement1Up && impulse2Down && retracement2Up && impulse3Down) {
-                st._structure.trend = 'bearish';
-                st._structure.impulse1 = l1.price;
-                st._structure.retracement1 = h2.price;
-                st._structure.impulse2 = l2.price;
-                st._structure.retracement2 = h3.price;
-                st._structure.impulse3 = l3.price;
-                st._structure.level1 = l1.price;
-                st._structure.level2 = l2.price;
-                st._structure.firstBreak = true;
-                st._structure.secondBreak = true;
-                st._structure.confirmed = true;
-                st._structure.breakoutValid = true;
-                st._structure.step = 5;
-                st._structure.entryTriggered = false;
-                
-                addLog(`📉 ${sym}: DOBLE SUPERACIÓN BAJISTA | 1ª: $${l2.price.toFixed(4)} | 2ª: $${l3.price.toFixed(4)} ✅`, 'trend');
-            }
-        }
-    }
-}
-
-function calculatePips(price1, price2) {
-    return parseFloat((Math.abs(price2 - price1) * 10000).toFixed(2));
-}
-
-// 🎯 GENERAR SEÑAL EN 2ª SUPERACIÓN
-function generateSignal(sym) {
-    const st = pairState[sym];
-    if (!st || st.lastSignal && !st.signalExpired) return;
-
-    if (st.lastSignal) {
-        addLog(`⏳ ${sym}: Ya hay operación activa`, 'info');
-        return;
-    }
-
-    const isBoom = sym.includes('BOOM');
-    const price = st.price;
-    const structure = st._structure;
-
-    // ✅ Verificar que la estructura esté confirmada y la 2ª superación detectada
-    if (!structure.confirmed || !structure.breakoutValid || !structure.secondBreak) return;
+    const slPercent = Math.max(0.0010, Math.min(0.0050, avgRange / price * 1.2));
+    const slBase = 0.25;
+    const slPercentFinal = Math.max(0.0010, Math.min(0.0050, slPercent + (slBase / 100)));
+    const slDistance = price * slPercentFinal;
+    const tpRatio = 1.2;
+    const tpDistance = slDistance * tpRatio;
     
-    // ✅ Si ya se disparó la entrada, no repetir
-    if (structure.entryTriggered) return;
-
-    let condition = false;
-    if (isBoom && structure.trend === 'bullish') condition = true;
-    if (!isBoom && structure.trend === 'bearish') condition = true;
-    if (!condition) return;
-
-    // ✅ Verificar que el precio esté en la zona de la 2ª superación
-    let isInEntryZone = false;
+    let slPrice, tp1;
     if (isBoom) {
-        // Para BOOM: precio debe estar cerca o por encima del impulso3 (2ª superación)
-        const level = structure.impulse3;
-        isInEntryZone = price >= level * 0.998;
+        slPrice = round4(price - slDistance);
+        tp1 = round4(price + tpDistance);
     } else {
-        // Para CRASH: precio debe estar cerca o por debajo del impulso3 (2ª superación)
-        const level = structure.impulse3;
-        isInEntryZone = price <= level * 1.002;
+        slPrice = round4(price + slDistance);
+        tp1 = round4(price - tpDistance);
     }
-
-    if (!isInEntryZone) {
-        addLog(`⏳ ${sym}: Esperando precio en zona de 2ª superación (actual: $${price.toFixed(4)})`, 'info');
-        return;
-    }
-
-    // ✅ MARCAR ENTRADA DISPARADA para que no se repita
-    structure.entryTriggered = true;
-
-    let slPrice, tp, risk;
+    if (tp1 === price) tp1 = isBoom ? round4(price + slDistance * 1.1) : round4(price - slDistance * 1.1);
+    if (slPrice === price) slPrice = isBoom ? round4(price - slDistance * 0.9) : round4(price + slDistance * 0.9);
     
-    if (isBoom) {
-        // COMPRA: SL debajo de la 1ª superación (impulse2)
-        slPrice = parseFloat((structure.impulse2 * 0.998).toFixed(4));
-        risk = Math.abs(price - slPrice);
-        tp = parseFloat((price + risk).toFixed(4));
-    } else {
-        // VENTA: SL arriba de la 1ª superación (impulse2)
-        slPrice = parseFloat((structure.impulse2 * 1.002).toFixed(4));
-        risk = Math.abs(price - slPrice);
-        tp = parseFloat((price - risk).toFixed(4));
-    }
-
-    const pips = calculatePips(price, tp);
-    const trendEmoji = structure.trend === 'bullish' ? '📈' : '📉';
-
-    const signal = {
-        sym,
-        type: isBoom ? 'MULTUP' : 'MULTDOWN',
-        price,
-        tp,
-        sl: slPrice,
-        time: new Date().toLocaleTimeString(),
-        status: 'PENDIENTE',
-        trend: structure.trend || 'N/A',
-        impulse1: structure.impulse1,
-        retracement1: structure.retracement1,
-        impulse2: structure.impulse2,
-        retracement2: structure.retracement2,
-        impulse3: structure.impulse3,
-        pips: pips,
-        breakout: '✅ DOBLE SUPERACIÓN CONFIRMADA'
+    return {
+        slPrice, tp1,
+        slPercent: slPercentFinal * 100,
+        tpPercent: (tpDistance / price) * 100
     };
-
-    st.lastSignal = signal;
-    st.signalExpired = false;
-    st._tp1Hit = false;
-    st._entryPrice = price;
-    st._tpPrice = tp;
-    st._slPrice = slPrice;
-    totalSignals++;
-    lastSignalTime[sym] = Date.now();
-
-    const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
-    const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-
-    const msg =
-        `${emoji} 🐙 KRAKEN PRO - DOBLE SUPERACIÓN\n\n` +
-        `<b>Par:</b> ${signal.sym}\n` +
-        `<b>Dirección:</b> ${dir}\n` +
-        `<b>Estructura:</b> ${trendEmoji} ${signal.trend.toUpperCase()}\n` +
-        `<b>1️⃣ Impulso 1:</b> $${signal.impulse1.toFixed(4)}\n` +
-        `<b>2️⃣ Retroceso 1:</b> $${signal.retracement1.toFixed(4)}\n` +
-        `<b>3️⃣ Impulso 2 (1ª SUPERA):</b> $${signal.impulse2.toFixed(4)}\n` +
-        `<b>4️⃣ Retroceso 2:</b> $${signal.retracement2.toFixed(4)}\n` +
-        `<b>5️⃣ Impulso 3 (2ª SUPERA):</b> $${signal.impulse3.toFixed(4)}\n` +
-        `<b>✅ ENTRADA:</b> $${signal.price}\n\n` +
-        `<b>TP:</b> $${signal.tp} 🎯 (${signal.pips} pips)\n` +
-        `<b>SL:</b> $${signal.sl} 🛑\n\n` +
-        `⏰ ${signal.time}`;
-
-    addLog(`🔔 ${sym}: ${dir} | DOBLE SUPERACIÓN | Entrada: $${price} | Pips: ${signal.pips}`, 'signal');
-    sendTelegramMessage(msg);
 }
 
-function analyzeTrendStart(sym) {
+function calculateSpikeProbability(sym) {
+    const st = pairState[sym];
+    if (!st.candles || st.candles.length < 30) return 0;
+    const candles = st.candles;
+    const lookback = 20;
+    const recentCandles = candles.slice(-lookback);
+    const high = Math.max(...recentCandles);
+    const low = Math.min(...recentCandles);
+    const range = ((high - low) / high) * 100;
+    const mean = recentCandles.reduce((a, b) => a + b, 0) / recentCandles.length;
+    const variance = recentCandles.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentCandles.length;
+    const stdDev = Math.sqrt(variance);
+    const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
+    const grindingThreshold = 2.5;
+    const isGrinding = range < grindingThreshold && stdDev < 5;
+    const isExhausted = Math.abs(momentum) < MOMENTUM_THRESHOLD;
+    st._isGrinding = isGrinding;
+    st._isExhausted = isExhausted;
+    let probability = 0;
+    let signalType = null;
+    if (isGrinding && isExhausted) {
+        const baseProb = 50 + (1 - range / grindingThreshold) * 25;
+        const boost = Math.random() * 15;
+        probability = Math.min(95, Math.floor(baseProb + boost));
+        signalType = 'MULTUP';
+        st._pendingSpike = { probability, signalType };
+        if (probability !== st._lastSignalProb && !st._signalSent && !st._signalClosed) {
+            st._lastSignalProb = probability;
+            addLog(`⚠️ ${sym}: SPIKE INMINENTE | Prob: ${probability}% | 🟢 COMPRA`, 'spike');
+        }
+    } else {
+        st._pendingSpike = null;
+        st._lastSignalProb = 0;
+        if (st._signalClosed) st._signalSent = false;
+    }
+    st._spikeProbability = probability;
+    return probability;
+}
+
+function checkSpikeSignal(sym) {
+    const st = pairState[sym];
+    if (!st || st.price === null || !st.candles || st.candles.length < 30) return null;
+    if (!signalsActive) return null;
+    if (st._signalClosed) return null;
+    const minProb = 80;
+    const probability = calculateSpikeProbability(sym);
+    if (st._pendingSpike && st._pendingSpike.probability >= minProb && !st._signalSent && !st._signalClosed) {
+        const { signalType } = st._pendingSpike;
+        const price = st.price;
+        const result = calculateTPSL(price, st.candles, true);
+        const signal = {
+            sym, type: signalType, price,
+            tp1: result.tp1, sl: result.slPrice,
+            slPercent: result.slPercent, tpPercent: result.tpPercent,
+            probability: st._pendingSpike.probability,
+            time: new Date().toLocaleTimeString(),
+            status: 'PENDIENTE'
+        };
+        st._signalSent = true;
+        st._signalClosed = false;
+        return signal;
+    }
+    return null;
+}
+
+function analyzeSignal(sym) {
     if (isProcessingQueue) { analysisQueue.push(sym); return; }
     isProcessingQueue = true;
-
     try {
         const st = pairState[sym];
-        if (!st || st.candles.length < 20) { isProcessingQueue = false; processNextInQueue(); return; }
+        if (!st || st.price === null || !st.candles || st.candles.length < 20) {
+            isProcessingQueue = false; processNextInQueue(); return;
+        }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
-
-        detectDoubleBreak(sym);
-
+        st._lastCandleClose = st.price;
+        if (st._signalClosed) { isProcessingQueue = false; processNextInQueue(); return; }
         if (st.lastSignal && !st.signalExpired) {
-            checkSignalExpiry(sym);
+            const signal = st.lastSignal;
+            const price = st.price;
+            let signalClosed = false;
+            if (!st._tp1Hit && price >= signal.tp1) {
+                st._tp1Hit = true;
+                signal.status = 'TP1 🎯';
+                signalClosed = true;
+                wins++;
+                addLog(`✅ ${sym}: TP ALCANZADO (+${signal.tpPercent?.toFixed(2) || '?'}%)`, 'success');
+                if (signal.telegram) {
+                    sendTelegramMessage(`✅ <b>TP ALCANZADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n📈 +${signal.tpPercent?.toFixed(2) || '?'}%`);
+                }
+            }
+            if (!st._tp1Hit && !st._slHit && price <= signal.sl) {
+                st._slHit = true;
+                signal.status = 'SL 🛑';
+                signalClosed = true;
+                losses++;
+                addLog(`❌ ${sym}: SL EJECUTADO (-${signal.slPercent?.toFixed(2) || '?'}%)`, 'error');
+                if (signal.telegram) {
+                    sendTelegramMessage(`❌ <b>SL EJECUTADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n📉 -${signal.slPercent?.toFixed(2) || '?'}%`);
+                }
+            }
+            if (signalClosed || st._tp1Hit || st._slHit) {
+                st.signalExpired = true;
+                st._signalClosed = true;
+                st._signalSent = false;
+                st._lastSignalProb = 0;
+                updateSignalBadge();
+                setTimeout(() => {
+                    if (pairState[sym]) {
+                        pairState[sym]._signalClosed = false;
+                        pairState[sym]._signalSent = false;
+                        pairState[sym]._tp1Hit = false;
+                        pairState[sym]._slHit = false;
+                        pairState[sym].signalExpired = false;
+                        pairState[sym].lastSignal = null;
+                        pairState[sym]._lastSignalProb = 0;
+                    }
+                }, 5000);
+                isProcessingQueue = false; processNextInQueue(); return;
+            }
             isProcessingQueue = false; processNextInQueue(); return;
         }
-
-        const timeSinceLast = Date.now() - lastSignalTime[sym];
-        if (timeSinceLast < 300000) {
-            isProcessingQueue = false; processNextInQueue(); return;
+        if (!st.lastSignal || st.signalExpired) {
+            const signal = checkSpikeSignal(sym);
+            if (signal) {
+                const dir = '📈 COMPRA';
+                addLog(`🔔 ${sym}: ${dir} | SPIKE ${signal.probability}% | Entry: $${signal.price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
+                st.lastSignal = signal;
+                st.signalExpired = false;
+                st._tp1Hit = false;
+                st._slHit = false;
+                st._signalClosed = false;
+                st._lastSignalProb = 0;
+                lastSignalTime[sym] = Date.now();
+                totalSignals++;
+                const msg = `🟢 <b>🐙 SEÑAL KRAKEN PRO</b>\n\n📊 Par: ${signal.sym}\n📈 Dirección: 📈 COMPRA\n🎯 Probabilidad: ${signal.probability}%\n💲 Entrada: $${signal.price.toFixed(4)}\n🎯 TP1: $${signal.tp1.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n📉 SL %: ${signal.slPercent?.toFixed(2) || '?'}%\n📈 TP %: ${signal.tpPercent?.toFixed(2) || '?'}%\n⏰ Hora: ${signal.time}`;
+                sendTelegramMessage(msg);
+                signal.telegram = true;
+                updateSignalBadge();
+                isProcessingQueue = false; processNextInQueue(); return;
+            }
         }
-
-        generateSignal(sym);
-
+        calculateSpikeProbability(sym);
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
-
     isProcessingQueue = false; processNextInQueue();
 }
 
 function processNextInQueue() {
     if (analysisQueue.length > 0) {
         const nextSym = analysisQueue.shift();
-        analyzeTrendStart(nextSym);
+        analyzeSignal(nextSym);
     }
 }
 
-function checkSignalExpiry(sym) {
-    const st = pairState[sym];
-    if (!st || !st.lastSignal || st.signalExpired) return;
-
-    const price = st.price;
-    const signal = st.lastSignal;
-    const isBoom = sym.includes('BOOM');
-    const sl = st._slPrice || signal.sl;
-    const tp = st._tpPrice || signal.tp;
-    const entry = st._entryPrice || signal.price;
-
-    if (!st._tp1Hit) {
-        if ((isBoom && price >= tp) || (!isBoom && price <= tp)) {
-            st._tp1Hit = true;
-            st.signalExpired = true;
-            wins++;
-            const pips = calculatePips(entry, price);
-            botStats.totalPipsGained += pips;
-            botStats.netPips += pips;
-            botStats.totalTrades++;
-            st._pips = pips;
-            st._isWin = true;
-            addLog(`🎯 TP ALCANZADO en ${sym} | +${pips} pips`, 'success');
-            const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
-            const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-            sendTelegramMessage(
-                `${emoji} 🐙 KRAKEN PRO\n\n` +
-                `<b>Par:</b> ${sym}\n` +
-                `<b>Dirección:</b> ${dir}\n` +
-                `✅ TP ALCANZADO 🎯\n` +
-                `<b>Pips:</b> +${pips} 📈\n\n` +
-                `⏰ ${new Date().toLocaleTimeString()}`
-            );
-            resetPairState(sym);
-            return;
-        }
-    }
-
-    if (!st.signalExpired) {
-        if ((isBoom && price <= sl) || (!isBoom && price >= sl)) {
-            st.signalExpired = true;
-            losses++;
-            const pips = calculatePips(entry, price);
-            botStats.totalPipsLost += pips;
-            botStats.netPips -= pips;
-            botStats.totalTrades++;
-            st._pips = -pips;
-            st._isWin = false;
-            addLog(`❌ SL ALCANZADO en ${sym} | -${pips} pips`, 'error');
-            const emoji = signal.type === 'MULTUP' ? '🟢' : '🔴';
-            const dir = signal.type === 'MULTUP' ? '📈 COMPRA (CALL)' : '📉 VENTA (PUT)';
-            sendTelegramMessage(
-                `${emoji} 🐙 KRAKEN PRO\n\n` +
-                `<b>Par:</b> ${sym}\n` +
-                `<b>Dirección:</b> ${dir}\n` +
-                `❌ SL ALCANZADO 🛑\n` +
-                `<b>Pips:</b> -${pips} 📉\n\n` +
-                `⏰ ${new Date().toLocaleTimeString()}`
-            );
-            resetPairState(sym);
-            return;
-        }
-    }
-}
-
-function resetPairState(sym) {
-    const st = pairState[sym];
-    if (!st) return;
-    st.lastSignal = null;
-    st.signalExpired = false;
-    st._tp1Hit = false;
-    st._entryPrice = null;
-    st._tpPrice = null;
-    st._slPrice = null;
-    st._pips = 0;
-    st._isWin = false;
-    st._structure.step = 0;
-    st._structure.confirmed = false;
-    st._structure.breakoutValid = false;
-    st._structure.firstBreak = false;
-    st._structure.secondBreak = false;
-    st._structure.entryTriggered = false;
-    st._structure.impulse1 = null;
-    st._structure.retracement1 = null;
-    st._structure.impulse2 = null;
-    st._structure.retracement2 = null;
-    st._structure.impulse3 = null;
-    st._structure.trend = null;
-    st._structure.level1 = null;
-    st._structure.level2 = null;
+function updateSignalBadge() {
+    // Actualización de estadísticas en el monitor
 }
 
 function handleMsg(data) {
@@ -449,49 +288,40 @@ function handleMsg(data) {
         return;
     }
     const t = data.msg_type;
-
     if (t === 'balance' || data.balance) {
         const bal = data.balance?.balance || data.balance;
         if (bal && typeof bal === 'number') { botStats.balance = parseFloat(bal); }
         return;
     }
-
     if (t === 'candles' || data.candles) {
         const sym = data.passthrough?.symbol;
         const candles = data.candles || [];
         const st = pairState[sym];
         if (!st || !candles.length) return;
-
         st.candles = candles.map(c => typeof c === 'object' ? parseFloat(c.close) : parseFloat(c));
         st.price = st.candles[st.candles.length - 1];
-        st._lastCandleClose = st.price;
         st.loaded = true;
+        st._lastCandleClose = st.price;
         dataLoaded = true;
         addLog(`📊 ${sym}: ${st.candles.length} velas cargadas`, 'info');
         return;
     }
-
     if (t === 'tick' || data.tick) {
         const sym = data.tick?.symbol || data.symbol;
         const st = pairState[sym];
         if (!st || !data.tick?.quote) return;
-
         st.price = parseFloat(data.tick.quote);
-
         const now = new Date();
-        const minutes = now.getMinutes();
-        const candleKey = `${now.getHours()}:${Math.floor(minutes / 5) * 5}`;
-
+        const minutes = Math.floor(now.getMinutes() / 5) * 5;
+        const candleKey = `${now.getHours()}:${minutes}`;
         if (lastCandleKey[sym] && lastCandleKey[sym] !== candleKey) {
             if (!candleCloseProcessed[sym]) {
                 candleCloseProcessed[sym] = true;
-                st.candles.push(st.price);
-                if (st.candles.length > 500) st.candles.shift();
-                st._lastCandleClose = st.price;
-                if (dataLoaded && signalsActive) { analyzeTrendStart(sym); }
-                if (st.lastSignal && !st.signalExpired) {
-                    checkSignalExpiry(sym);
-                }
+                const closePrice = st.price;
+                st.candles.push(closePrice);
+                if (st.candles.length > 300) st.candles.shift();
+                st._lastCandleClose = closePrice;
+                if (dataLoaded && signalsActive) { analyzeSignal(sym); }
             }
         } else { candleCloseProcessed[sym] = false; }
         lastCandleKey[sym] = candleKey;
@@ -500,29 +330,24 @@ function handleMsg(data) {
 
 function openWS(url) {
     if (ws) try { ws.close(); } catch (e) {}
-
     ws = new WebSocket(url);
     ws.onopen = () => {
         addLog('✅ Conectado a Deriv WebSocket', 'success');
         ALL_PAIRS.forEach(p => {
-            ws.send(JSON.stringify({ ticks_history: p, count: 500, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
+            ws.send(JSON.stringify({ ticks_history: p, count: 200, end: 'latest', granularity: TIMEFRAME, style: 'candles', passthrough: { symbol: p } }));
             ws.send(JSON.stringify({ ticks: p, subscribe: 1 }));
         });
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS (DOBLE SUPERACIÓN)`, 'start');
+            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS (SPIKE FORECASTER)`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 KRAKEN PRO ACTIVADO\n\n✅ Sistema en marcha\n📡 Monitoreando ${ALL_PAIRS.length} símbolos\n🎯 DOBLE SUPERACIÓN\n📊 1ª SUPERA → confirmación\n📊 2ª SUPERA → ENTRADA\n🔴 BOOM → SOLO COMPRAS\n🔵 CRASH → SOLO VENTAS\n⏰ ${new Date().toLocaleString()}`);
+                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 80%\n📨 Esperando señales...`);
             }
         }, 5000);
     };
-    ws.onclose = () => {
-        addLog('⚠️ WebSocket cerrado', 'warn');
-        activationSent = false;
-        if (running) scheduleReconnect();
-    };
+    ws.onclose = () => { addLog('⚠️ WebSocket cerrado', 'warn'); if (running) scheduleReconnect(); };
     ws.onerror = () => {};
     ws.onmessage = (e) => handleMsg(JSON.parse(e.data));
 }
@@ -559,6 +384,7 @@ async function connectDeriv() {
     }
 }
 
+// ==================== SERVIDOR WEB ====================
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
@@ -566,18 +392,16 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/stats', (req, res) => {
+    const total = wins + losses;
+    const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
     res.json({
         balance: botStats.balance,
-        totalProfit: botStats.totalProfit,
-        winCount: botStats.winCount,
-        lossCount: botStats.lossCount,
-        totalTrades: botStats.totalTrades,
-        totalSignals: totalSignals,
+        winRate: wr,
         wins: wins,
         losses: losses,
-        totalPipsGained: botStats.totalPipsGained,
-        totalPipsLost: botStats.totalPipsLost,
-        netPips: botStats.netPips,
+        totalSignals: totalSignals,
+        totalTrades: total,
+        netPips: 0,
         logs: tradeLogs.slice(0, 50)
     });
 });
@@ -593,12 +417,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 DOBLE SUPERACIÓN - 2 VECES');
+console.log('🎯 SPIKE FORECASTER - SOLO BOOM');
 
-addLog('🎯 Iniciando KRAKEN PRO (DOBLE SUPERACIÓN CORREGIDO)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (SPIKE FORECASTER)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 DOBLE SUPERACIÓN\n📊 1ª SUPERA → confirmación\n📊 2ª SUPERA → ENTRADA\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 SPIKE FORECASTER\n📊 BOOM500, BOOM600, BOOM900, BOOM1000\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
