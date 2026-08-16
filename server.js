@@ -3,12 +3,12 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO - DOBLE SUPERACIÓN');
-console.log('📊 2 SUPERA: 1ª confirma, 2ª entrada');
+console.log('🐙 KRAKEN PRO - DOBLE SUPERACIÓN (CORREGIDO)');
+console.log('📊 ENTRADA EN 2ª SUPERA');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const TIMEFRAME = 60; // 5 MINUTOS
+const TIMEFRAME = 60; // 1 MINUTOS
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
@@ -54,7 +54,6 @@ ALL_PAIRS.forEach(p => {
         _slPrice: null,
         _pips: 0,
         _isWin: false,
-        // 🎯 DOBLE SUPERACIÓN
         _structure: {
             step: 0,
             impulse1: null,
@@ -66,7 +65,11 @@ ALL_PAIRS.forEach(p => {
             confirmed: false,
             firstBreak: false,
             secondBreak: false,
-            breakoutValid: false
+            entryTriggered: false,
+            breakoutValid: false,
+            // Guardar precios clave
+            level1: null,
+            level2: null
         }
     };
     lastCandleKey[p] = null;
@@ -101,7 +104,7 @@ async function sendTelegramMessage(message) {
     }
 }
 
-// 🎯 DETECTAR DOBLE SUPERACIÓN (2 VECES)
+// 🎯 DETECTAR DOBLE SUPERACIÓN
 function detectDoubleBreak(sym) {
     const st = pairState[sym];
     if (!st || st.candles.length < 20) return;
@@ -132,7 +135,6 @@ function detectDoubleBreak(sym) {
     if (highs.length >= 3 && lows.length >= 3) {
         const isBoom = sym.includes('BOOM');
 
-        // Últimos 3 máximos y mínimos
         const h1 = highs[highs.length - 3];
         const h2 = highs[highs.length - 2];
         const h3 = highs[highs.length - 1];
@@ -141,7 +143,7 @@ function detectDoubleBreak(sym) {
         const l3 = lows[lows.length - 1];
 
         if (isBoom) {
-            // 📈 BOOM: Impulso SUBE → Retroceso BAJA → Impulso SUBE (1ª) → Retroceso BAJA → Impulso SUBE (2ª)
+            // BOOM: SUBE → BAJA → SUBE (1ª) → BAJA → SUBE (2ª)
             const impulse1Up = h1.price > l1.price * 1.001;
             const retracement1Down = l2.price < h1.price * 0.999;
             const impulse2Up = h2.price > h1.price * 1.001;
@@ -155,16 +157,19 @@ function detectDoubleBreak(sym) {
                 st._structure.impulse2 = h2.price;
                 st._structure.retracement2 = l3.price;
                 st._structure.impulse3 = h3.price;
+                st._structure.level1 = h1.price;
+                st._structure.level2 = h2.price;
                 st._structure.firstBreak = true;
                 st._structure.secondBreak = true;
                 st._structure.confirmed = true;
                 st._structure.breakoutValid = true;
                 st._structure.step = 5;
+                st._structure.entryTriggered = false;
                 
                 addLog(`📈 ${sym}: DOBLE SUPERACIÓN ALCISTA | 1ª: $${h2.price.toFixed(4)} | 2ª: $${h3.price.toFixed(4)} ✅`, 'trend');
             }
         } else {
-            // 📉 CRASH: Impulso BAJA → Retroceso SUBE → Impulso BAJA (1ª) → Retroceso SUBE → Impulso BAJA (2ª)
+            // CRASH: BAJA → SUBE → BAJA (1ª) → SUBE → BAJA (2ª)
             const impulse1Down = l1.price < h1.price * 0.999;
             const retracement1Up = h2.price > l1.price * 1.001;
             const impulse2Down = l2.price < l1.price * 0.999;
@@ -178,11 +183,14 @@ function detectDoubleBreak(sym) {
                 st._structure.impulse2 = l2.price;
                 st._structure.retracement2 = h3.price;
                 st._structure.impulse3 = l3.price;
+                st._structure.level1 = l1.price;
+                st._structure.level2 = l2.price;
                 st._structure.firstBreak = true;
                 st._structure.secondBreak = true;
                 st._structure.confirmed = true;
                 st._structure.breakoutValid = true;
                 st._structure.step = 5;
+                st._structure.entryTriggered = false;
                 
                 addLog(`📉 ${sym}: DOBLE SUPERACIÓN BAJISTA | 1ª: $${l2.price.toFixed(4)} | 2ª: $${l3.price.toFixed(4)} ✅`, 'trend');
             }
@@ -208,20 +216,46 @@ function generateSignal(sym) {
     const price = st.price;
     const structure = st._structure;
 
+    // ✅ Verificar que la estructura esté confirmada y la 2ª superación detectada
     if (!structure.confirmed || !structure.breakoutValid || !structure.secondBreak) return;
+    
+    // ✅ Si ya se disparó la entrada, no repetir
+    if (structure.entryTriggered) return;
 
     let condition = false;
     if (isBoom && structure.trend === 'bullish') condition = true;
     if (!isBoom && structure.trend === 'bearish') condition = true;
     if (!condition) return;
 
+    // ✅ Verificar que el precio esté en la zona de la 2ª superación
+    let isInEntryZone = false;
+    if (isBoom) {
+        // Para BOOM: precio debe estar cerca o por encima del impulso3 (2ª superación)
+        const level = structure.impulse3;
+        isInEntryZone = price >= level * 0.998;
+    } else {
+        // Para CRASH: precio debe estar cerca o por debajo del impulso3 (2ª superación)
+        const level = structure.impulse3;
+        isInEntryZone = price <= level * 1.002;
+    }
+
+    if (!isInEntryZone) {
+        addLog(`⏳ ${sym}: Esperando precio en zona de 2ª superación (actual: $${price.toFixed(4)})`, 'info');
+        return;
+    }
+
+    // ✅ MARCAR ENTRADA DISPARADA para que no se repita
+    structure.entryTriggered = true;
+
     let slPrice, tp, risk;
     
     if (isBoom) {
+        // COMPRA: SL debajo de la 1ª superación (impulse2)
         slPrice = parseFloat((structure.impulse2 * 0.998).toFixed(4));
         risk = Math.abs(price - slPrice);
         tp = parseFloat((price + risk).toFixed(4));
     } else {
+        // VENTA: SL arriba de la 1ª superación (impulse2)
         slPrice = parseFloat((structure.impulse2 * 1.002).toFixed(4));
         risk = Math.abs(price - slPrice);
         tp = parseFloat((price - risk).toFixed(4));
@@ -275,7 +309,7 @@ function generateSignal(sym) {
         `<b>SL:</b> $${signal.sl} 🛑\n\n` +
         `⏰ ${signal.time}`;
 
-    addLog(`🔔 ${sym}: ${dir} | DOBLE SUPERACIÓN | Pips: ${signal.pips}`, 'signal');
+    addLog(`🔔 ${sym}: ${dir} | DOBLE SUPERACIÓN | Entrada: $${price} | Pips: ${signal.pips}`, 'signal');
     sendTelegramMessage(msg);
 }
 
@@ -395,12 +429,15 @@ function resetPairState(sym) {
     st._structure.breakoutValid = false;
     st._structure.firstBreak = false;
     st._structure.secondBreak = false;
+    st._structure.entryTriggered = false;
     st._structure.impulse1 = null;
     st._structure.retracement1 = null;
     st._structure.impulse2 = null;
     st._structure.retracement2 = null;
     st._structure.impulse3 = null;
     st._structure.trend = null;
+    st._structure.level1 = null;
+    st._structure.level2 = null;
 }
 
 function handleMsg(data) {
@@ -558,7 +595,7 @@ app.listen(PORT, '0.0.0.0', () => {
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
 console.log('🎯 DOBLE SUPERACIÓN - 2 VECES');
 
-addLog('🎯 Iniciando KRAKEN PRO (DOBLE SUPERACIÓN)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (DOBLE SUPERACIÓN CORREGIDO)...', 'info');
 
 setTimeout(() => {
     sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 DOBLE SUPERACIÓN\n📊 1ª SUPERA → confirmación\n📊 2ª SUPERA → ENTRADA\n⏰ ${new Date().toLocaleString()}`);
