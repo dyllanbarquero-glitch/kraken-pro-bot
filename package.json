@@ -1,7 +1,7 @@
 {
   "name": "kraken-pro",
-  "version": "5.1.0",
-  "description": "🐙 KRAKEN PRO 2.0 - Deriv Edition",
+  "version": "6.9.0",
+  "description": "🐙 KRAKEN PRO - Spike Forecaster",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
