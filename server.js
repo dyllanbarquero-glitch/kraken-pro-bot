@@ -8,7 +8,7 @@ console.log('📊 2 SUPERA: 1ª confirma, 2ª entrada');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM1000', 'CRASH1000', 'CRASH900', 'BOOM900'];
-const TIMEFRAME = 300; // 5 MINUTOS
+const TIMEFRAME = 60; // 5 MINUTOS
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
 const PAT_TOKEN = 'pat_3ee3edc2b80c8daea41968ea5d8205df7f75f187d17f17175d3eb863acb82d23';
