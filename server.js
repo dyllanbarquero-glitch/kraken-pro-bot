@@ -5,10 +5,11 @@ const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO - SPIKE FORECASTER');
 console.log('📊 BACKEND 24/7 - SOLO BOOM');
+console.log('📨 SOLO SEÑALES CON PROBABILIDAD ≥ 80%');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 60;
+const TIMEFRAME = 300;
 const MOMENTUM_THRESHOLD = 0.30;
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -48,7 +49,9 @@ ALL_PAIRS.forEach(p => {
         _pendingSpike: null,
         _signalSent: false,
         _signalClosed: false,
-        _lastSignalProb: 0
+        _lastSignalProb: 0,
+        _lastSpikeLogTime: 0,
+        _signalGenerated: false
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
@@ -148,14 +151,12 @@ function calculateSpikeProbability(sym) {
         probability = Math.min(95, Math.floor(baseProb + boost));
         signalType = 'MULTUP';
         st._pendingSpike = { probability, signalType };
-        if (probability !== st._lastSignalProb && !st._signalSent && !st._signalClosed) {
-            st._lastSignalProb = probability;
-            addLog(`⚠️ ${sym}: SPIKE INMINENTE | Prob: ${probability}% | 🟢 COMPRA`, 'spike');
-        }
     } else {
         st._pendingSpike = null;
-        st._lastSignalProb = 0;
-        if (st._signalClosed) st._signalSent = false;
+        if (st._signalClosed) {
+            st._signalSent = false;
+            st._lastSignalProb = 0;
+        }
     }
     st._spikeProbability = probability;
     return probability;
@@ -165,9 +166,15 @@ function checkSpikeSignal(sym) {
     const st = pairState[sym];
     if (!st || st.price === null || !st.candles || st.candles.length < 30) return null;
     if (!signalsActive) return null;
-    if (st._signalClosed) return null;
+    if (st._signalClosed) {
+        st._signalSent = false;
+        st._lastSignalProb = 0;
+        return null;
+    }
     const minProb = 80;
     const probability = calculateSpikeProbability(sym);
+    
+    // ✅ SOLO LOG CUANDO SE GENERA LA SEÑAL (≥ 80%)
     if (st._pendingSpike && st._pendingSpike.probability >= minProb && !st._signalSent && !st._signalClosed) {
         const { signalType } = st._pendingSpike;
         const price = st.price;
@@ -182,6 +189,11 @@ function checkSpikeSignal(sym) {
         };
         st._signalSent = true;
         st._signalClosed = false;
+        st._lastSignalProb = st._pendingSpike.probability;
+        st._signalGenerated = true;
+        
+        // ✅ LOG DE SEÑAL GENERADA (SOLO AQUÍ)
+        addLog(`🔔 ${sym}: 📈 SEÑAL GENERADA | Prob: ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
         return signal;
     }
     return null;
@@ -197,11 +209,22 @@ function analyzeSignal(sym) {
         }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
         st._lastCandleClose = st.price;
-        if (st._signalClosed) { isProcessingQueue = false; processNextInQueue(); return; }
+        
+        if (st._signalClosed) {
+            st._signalSent = false;
+            st._lastSignalProb = 0;
+            st._pendingSpike = null;
+            st.lastSignal = null;
+            st.signalExpired = false;
+            st._signalGenerated = false;
+            isProcessingQueue = false; processNextInQueue(); return;
+        }
+        
         if (st.lastSignal && !st.signalExpired) {
             const signal = st.lastSignal;
             const price = st.price;
             let signalClosed = false;
+            
             if (!st._tp1Hit && price >= signal.tp1) {
                 st._tp1Hit = true;
                 signal.status = 'TP1 🎯';
@@ -212,6 +235,7 @@ function analyzeSignal(sym) {
                     sendTelegramMessage(`✅ <b>TP ALCANZADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n📈 +${signal.tpPercent?.toFixed(2) || '?'}%`);
                 }
             }
+            
             if (!st._tp1Hit && !st._slHit && price <= signal.sl) {
                 st._slHit = true;
                 signal.status = 'SL 🛑';
@@ -222,11 +246,15 @@ function analyzeSignal(sym) {
                     sendTelegramMessage(`❌ <b>SL EJECUTADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n📉 -${signal.slPercent?.toFixed(2) || '?'}%`);
                 }
             }
+            
             if (signalClosed || st._tp1Hit || st._slHit) {
                 st.signalExpired = true;
                 st._signalClosed = true;
                 st._signalSent = false;
                 st._lastSignalProb = 0;
+                st._pendingSpike = null;
+                st.lastSignal = null;
+                st._signalGenerated = false;
                 updateSignalBadge();
                 setTimeout(() => {
                     if (pairState[sym]) {
@@ -237,17 +265,18 @@ function analyzeSignal(sym) {
                         pairState[sym].signalExpired = false;
                         pairState[sym].lastSignal = null;
                         pairState[sym]._lastSignalProb = 0;
+                        pairState[sym]._pendingSpike = null;
+                        pairState[sym]._signalGenerated = false;
                     }
-                }, 5000);
+                }, 1000);
                 isProcessingQueue = false; processNextInQueue(); return;
             }
             isProcessingQueue = false; processNextInQueue(); return;
         }
+        
         if (!st.lastSignal || st.signalExpired) {
             const signal = checkSpikeSignal(sym);
             if (signal) {
-                const dir = '📈 COMPRA';
-                addLog(`🔔 ${sym}: ${dir} | SPIKE ${signal.probability}% | Entry: $${signal.price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
                 st.lastSignal = signal;
                 st.signalExpired = false;
                 st._tp1Hit = false;
@@ -256,13 +285,25 @@ function analyzeSignal(sym) {
                 st._lastSignalProb = 0;
                 lastSignalTime[sym] = Date.now();
                 totalSignals++;
-                const msg = `🟢 <b>🐙 SEÑAL KRAKEN PRO</b>\n\n📊 Par: ${signal.sym}\n📈 Dirección: 📈 COMPRA\n🎯 Probabilidad: ${signal.probability}%\n💲 Entrada: $${signal.price.toFixed(4)}\n🎯 TP1: $${signal.tp1.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n📉 SL %: ${signal.slPercent?.toFixed(2) || '?'}%\n📈 TP %: ${signal.tpPercent?.toFixed(2) || '?'}%\n⏰ Hora: ${signal.time}`;
+                
+                // 📨 Enviar señal a Telegram
+                const msg = `🟢 <b>🐙 SEÑAL KRAKEN PRO</b>\n\n` +
+                    `<b>📊 Par:</b> ${signal.sym}\n` +
+                    `<b>📈 Dirección:</b> 📈 COMPRA\n` +
+                    `<b>🎯 Probabilidad:</b> ${signal.probability}%\n` +
+                    `<b>💲 Entrada:</b> $${signal.price.toFixed(4)}\n` +
+                    `<b>🎯 TP1:</b> $${signal.tp1.toFixed(4)}\n` +
+                    `<b>🛑 SL:</b> $${signal.sl.toFixed(4)}\n` +
+                    `<b>📉 SL %:</b> ${signal.slPercent?.toFixed(2) || '?'}%\n` +
+                    `<b>📈 TP %:</b> ${signal.tpPercent?.toFixed(2) || '?'}%\n` +
+                    `<b>⏰ Hora:</b> ${signal.time}`;
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 updateSignalBadge();
                 isProcessingQueue = false; processNextInQueue(); return;
             }
         }
+        
         calculateSpikeProbability(sym);
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
     isProcessingQueue = false; processNextInQueue();
@@ -276,7 +317,7 @@ function processNextInQueue() {
 }
 
 function updateSignalBadge() {
-    // Actualización de estadísticas en el monitor
+    // Estadísticas
 }
 
 function handleMsg(data) {
@@ -418,11 +459,12 @@ app.listen(PORT, '0.0.0.0', () => {
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
 console.log('🎯 SPIKE FORECASTER - SOLO BOOM');
+console.log('📨 SOLO SEÑALES CON PROBABILIDAD ≥ 80%');
 
 addLog('🎯 Iniciando KRAKEN PRO (SPIKE FORECASTER)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 SPIKE FORECASTER\n📊 BOOM500, BOOM600, BOOM900, BOOM1000\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 SPIKE FORECASTER\n📊 BOOM500, BOOM600, BOOM900, BOOM1000\n📨 SOLO SEÑALES CON PROBABILIDAD ≥ 80%\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
