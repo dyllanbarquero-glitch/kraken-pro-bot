@@ -9,7 +9,7 @@ console.log('📨 SOLO SEÑALES CON PROBABILIDAD ≥ 80%');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 300;
+const TIMEFRAME = 60;
 const MOMENTUM_THRESHOLD = 0.30;
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -129,7 +129,7 @@ function calculateSpikeProbability(sym) {
     const st = pairState[sym];
     if (!st.candles || st.candles.length < 30) return 0;
     const candles = st.candles;
-    const lookback = 20;
+    const lookback = 30;
     const recentCandles = candles.slice(-lookback);
     const high = Math.max(...recentCandles);
     const low = Math.min(...recentCandles);
