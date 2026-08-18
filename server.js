@@ -138,7 +138,7 @@ function calculateSpikeProbability(sym) {
     const variance = recentCandles.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentCandles.length;
     const stdDev = Math.sqrt(variance);
     const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
-    const grindingThreshold = 2.5;
+    const grindingThreshold = 2.0;
     const isGrinding = range < grindingThreshold && stdDev < 5;
     const isExhausted = Math.abs(momentum) < MOMENTUM_THRESHOLD;
     st._isGrinding = isGrinding;
