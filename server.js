@@ -101,7 +101,7 @@ function calculateTPSL(price, candles, isBoom) {
     if (avgRange === 0 || isNaN(avgRange)) avgRange = price * 0.0025;
     
     const slPercent = Math.max(0.0010, Math.min(0.0050, avgRange / price * 1.2));
-    const slBase = 0.25;
+    const slBase = 0.15;
     const slPercentFinal = Math.max(0.0010, Math.min(0.0050, slPercent + (slBase / 100)));
     const slDistance = price * slPercentFinal;
     const tpRatio = 1.2;
