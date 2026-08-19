@@ -9,7 +9,7 @@ console.log('📨 SOLO SEÑALES CON PROBABILIDAD ≥ 80%');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 3600;
+const TIMEFRAME = 300;
 const MOMENTUM_THRESHOLD = 0.30;
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
