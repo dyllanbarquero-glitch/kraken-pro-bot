@@ -4,12 +4,13 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO - SPIKE FORECASTER MAX');
-console.log('📊 MONITOREO EN TIEMPO REAL - TP/SL INMEDIATO');
+console.log('📊 SIN SEÑALES DUPLICADAS - COOLDOWN 2min');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
 const TIMEFRAME = 60;
 const MOMENTUM_THRESHOLD = 0.20;
+const COOLDOWN_MINUTES = 2; // ⏱️ 2 minutos de cooldown
 
 const CONFIG = {
     MIN_PROBABILITY: 90,
@@ -18,7 +19,8 @@ const CONFIG = {
     TP_RATIO: 1.0,
     SL_BASE: 0.30,
     MIN_CANDLES: 30,
-    MAX_CANDLES: 300
+    MAX_CANDLES: 300,
+    COOLDOWN: COOLDOWN_MINUTES * 60 * 1000 // 2 minutos en ms
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -44,7 +46,6 @@ let analysisQueue = [];
 let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
-let realTimeCheck = {};
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -64,12 +65,12 @@ ALL_PAIRS.forEach(p => {
         _signalGenerated: false,
         _tpPrice: null,
         _slPrice: null,
-        _entryPrice: null
+        _entryPrice: null,
+        _lastSignalTime: 0 // Para cooldown
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
     lastSignalTime[p] = 0;
-    realTimeCheck[p] = false;
 });
 
 function addLog(msg, type = 'info') {
@@ -180,11 +181,19 @@ function checkSpikeSignal(sym) {
     const st = pairState[sym];
     if (!st || st.price === null || !st.candles || st.candles.length < CONFIG.MIN_CANDLES) return null;
     if (!signalsActive) return null;
+    
+    // ✅ COOLDOWN: No generar señal si pasó menos de 2 minutos
+    const now = Date.now();
+    if (now - st._lastSignalTime < CONFIG.COOLDOWN) {
+        return null;
+    }
+    
     if (st._signalClosed) {
         st._signalSent = false;
         st._lastSignalProb = 0;
         return null;
     }
+    
     const minProb = CONFIG.MIN_PROBABILITY;
     const probability = calculateSpikeProbability(sym);
     
@@ -207,22 +216,21 @@ function checkSpikeSignal(sym) {
         st._tpPrice = signal.tp1;
         st._slPrice = signal.sl;
         st._entryPrice = price;
+        st._lastSignalTime = now; // Guardar tiempo de señal
         addLog(`🔔 ${sym}: 📈 SEÑAL ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
         return signal;
     }
     return null;
 }
 
-// 🔥 FUNCIÓN DE MONITOREO EN TIEMPO REAL - CORREGIDA
 function checkRealTimeTP_SL(sym) {
     const st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
     
     const signal = st.lastSignal;
     const price = st.price;
-    const isBoom = true; // Siempre compras
+    const isBoom = true;
     
-    // ✅ PRIORIDAD: TP PRIMERO
     if (!st._tp1Hit) {
         if ((isBoom && price >= signal.tp1) || (!isBoom && price <= signal.tp1)) {
             st._tp1Hit = true;
@@ -232,13 +240,12 @@ function checkRealTimeTP_SL(sym) {
             wins++;
             
             const gain = ((price - st._entryPrice) / st._entryPrice * 100);
-            addLog(`✅ ${sym}: TP ALCANZADO EN TIEMPO REAL (+${gain.toFixed(2)}%) | Price: $${price.toFixed(4)}`, 'success');
+            addLog(`✅ ${sym}: TP ALCANZADO (+${gain.toFixed(2)}%)`, 'success');
             
             if (signal.telegram) {
-                sendTelegramMessage(`✅ <b>TP ALCANZADO - TIEMPO REAL</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📈 +${gain.toFixed(2)}%`);
+                sendTelegramMessage(`✅ <b>TP ALCANZADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📈 +${gain.toFixed(2)}%`);
             }
             
-            // Resetear estado para nuevas señales
             setTimeout(() => {
                 if (pairState[sym]) {
                     pairState[sym]._signalClosed = false;
@@ -259,7 +266,6 @@ function checkRealTimeTP_SL(sym) {
         }
     }
     
-    // ✅ SL SOLO SI NO SE HA ALCANZADO TP
     if (!st._tp1Hit && !st._slHit) {
         if ((isBoom && price <= signal.sl) || (!isBoom && price >= signal.sl)) {
             st._slHit = true;
@@ -269,10 +275,10 @@ function checkRealTimeTP_SL(sym) {
             losses++;
             
             const loss = ((st._entryPrice - price) / st._entryPrice * 100);
-            addLog(`❌ ${sym}: SL EJECUTADO EN TIEMPO REAL (-${loss.toFixed(2)}%) | Price: $${price.toFixed(4)}`, 'error');
+            addLog(`❌ ${sym}: SL EJECUTADO (-${loss.toFixed(2)}%)`, 'error');
             
             if (signal.telegram) {
-                sendTelegramMessage(`❌ <b>SL EJECUTADO - TIEMPO REAL</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📉 -${loss.toFixed(2)}%`);
+                sendTelegramMessage(`❌ <b>SL EJECUTADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📉 -${loss.toFixed(2)}%`);
             }
             
             setTimeout(() => {
@@ -308,7 +314,6 @@ function analyzeSignal(sym) {
         
         st._lastCandleClose = st.price;
         
-        // ✅ MONITOREO EN TIEMPO REAL
         if (st.lastSignal && !st.signalExpired) {
             checkRealTimeTP_SL(sym);
             if (st.signalExpired) {
@@ -352,7 +357,7 @@ function analyzeSignal(sym) {
                     `<b>📉 SL %:</b> ${signal.slPercent?.toFixed(2) || '?'}%\n` +
                     `<b>📈 TP %:</b> ${signal.tpPercent?.toFixed(2) || '?'}%\n` +
                     `<b>⏰ Hora:</b> ${signal.time}\n\n` +
-                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN\n📊 MONITOREO EN TIEMPO REAL`;
+                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN\n📊 MONITOREO EN TIEMPO REAL\n⏱️ COOLDOWN 2min`;
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; processNextInQueue(); return;
@@ -404,7 +409,6 @@ function handleMsg(data) {
         if (!st || !data.tick?.quote) return;
         st.price = parseFloat(data.tick.quote);
         
-        // ✅ VERIFICAR TP/SL EN CADA TICK (TIEMPO REAL)
         if (dataLoaded && signalsActive && st.lastSignal && !st.signalExpired) {
             checkRealTimeTP_SL(sym);
         }
@@ -442,7 +446,7 @@ function openWS(url) {
             addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n📨 Esperando señales...`);
+                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n⏱️ COOLDOWN 2min entre señales\n📨 Esperando señales...`);
             }
         }, 5000);
     };
@@ -515,12 +519,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 MONITOREO EN TIEMPO REAL');
+console.log('🎯 SIN SEÑALES DUPLICADAS - COOLDOWN 2min');
 
-addLog('🎯 Iniciando KRAKEN PRO (MONITOREO EN TIEMPO REAL)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (SIN DUPLICADOS)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n⏱️ COOLDOWN 2min entre señales\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
