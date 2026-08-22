@@ -4,21 +4,19 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO - SPIKE FORECASTER MAX');
-console.log('📊 CONFIGURACIÓN MÁXIMA PRECISIÓN');
-console.log('🎯 Probabilidad: 90% | Temporalidad: 1min');
+console.log('📊 MONITOREO EN TIEMPO REAL - TP/SL INMEDIATO');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 60; // 1 MINUTO
+const TIMEFRAME = 60;
 const MOMENTUM_THRESHOLD = 0.20;
 
-// ==================== CONFIGURACIÓN EXTREMA ====================
 const CONFIG = {
-    MIN_PROBABILITY: 90,        // 90% - Máxima precisión
-    LOOKBACK: 15,               // 15 velas - Reactivo
-    GRINDING_THRESHOLD: 1.0,    // 1.0% - Muy estricto
-    TP_RATIO: 1.0,              // 1:1 - Riesgo/beneficio equilibrado
-    SL_BASE: 0.30,              // 0.30% - Protección de capital
+    MIN_PROBABILITY: 90,
+    LOOKBACK: 15,
+    GRINDING_THRESHOLD: 1.0,
+    TP_RATIO: 1.0,
+    SL_BASE: 0.30,
     MIN_CANDLES: 30,
     MAX_CANDLES: 300
 };
@@ -46,6 +44,7 @@ let analysisQueue = [];
 let isProcessingQueue = false;
 let lastSignalTime = {};
 let activationSent = false;
+let realTimeCheck = {};
 
 ALL_PAIRS.forEach(p => {
     pairState[p] = {
@@ -62,11 +61,15 @@ ALL_PAIRS.forEach(p => {
         _signalClosed: false,
         _lastSignalProb: 0,
         _lastSpikeLogTime: 0,
-        _signalGenerated: false
+        _signalGenerated: false,
+        _tpPrice: null,
+        _slPrice: null,
+        _entryPrice: null
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
     lastSignalTime[p] = 0;
+    realTimeCheck[p] = false;
 });
 
 function addLog(msg, type = 'info') {
@@ -201,10 +204,96 @@ function checkSpikeSignal(sym) {
         st._signalClosed = false;
         st._lastSignalProb = st._pendingSpike.probability;
         st._signalGenerated = true;
+        st._tpPrice = signal.tp1;
+        st._slPrice = signal.sl;
+        st._entryPrice = price;
         addLog(`🔔 ${sym}: 📈 SEÑAL ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
         return signal;
     }
     return null;
+}
+
+// 🔥 FUNCIÓN DE MONITOREO EN TIEMPO REAL - CORREGIDA
+function checkRealTimeTP_SL(sym) {
+    const st = pairState[sym];
+    if (!st || !st.lastSignal || st.signalExpired) return;
+    
+    const signal = st.lastSignal;
+    const price = st.price;
+    const isBoom = true; // Siempre compras
+    
+    // ✅ PRIORIDAD: TP PRIMERO
+    if (!st._tp1Hit) {
+        if ((isBoom && price >= signal.tp1) || (!isBoom && price <= signal.tp1)) {
+            st._tp1Hit = true;
+            st.signalExpired = true;
+            st._signalClosed = true;
+            signal.status = 'TP1 🎯';
+            wins++;
+            
+            const gain = ((price - st._entryPrice) / st._entryPrice * 100);
+            addLog(`✅ ${sym}: TP ALCANZADO EN TIEMPO REAL (+${gain.toFixed(2)}%) | Price: $${price.toFixed(4)}`, 'success');
+            
+            if (signal.telegram) {
+                sendTelegramMessage(`✅ <b>TP ALCANZADO - TIEMPO REAL</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📈 +${gain.toFixed(2)}%`);
+            }
+            
+            // Resetear estado para nuevas señales
+            setTimeout(() => {
+                if (pairState[sym]) {
+                    pairState[sym]._signalClosed = false;
+                    pairState[sym]._signalSent = false;
+                    pairState[sym]._tp1Hit = false;
+                    pairState[sym]._slHit = false;
+                    pairState[sym].signalExpired = false;
+                    pairState[sym].lastSignal = null;
+                    pairState[sym]._lastSignalProb = 0;
+                    pairState[sym]._pendingSpike = null;
+                    pairState[sym]._signalGenerated = false;
+                    pairState[sym]._tpPrice = null;
+                    pairState[sym]._slPrice = null;
+                    pairState[sym]._entryPrice = null;
+                }
+            }, 1000);
+            return;
+        }
+    }
+    
+    // ✅ SL SOLO SI NO SE HA ALCANZADO TP
+    if (!st._tp1Hit && !st._slHit) {
+        if ((isBoom && price <= signal.sl) || (!isBoom && price >= signal.sl)) {
+            st._slHit = true;
+            st.signalExpired = true;
+            st._signalClosed = true;
+            signal.status = 'SL 🛑';
+            losses++;
+            
+            const loss = ((st._entryPrice - price) / st._entryPrice * 100);
+            addLog(`❌ ${sym}: SL EJECUTADO EN TIEMPO REAL (-${loss.toFixed(2)}%) | Price: $${price.toFixed(4)}`, 'error');
+            
+            if (signal.telegram) {
+                sendTelegramMessage(`❌ <b>SL EJECUTADO - TIEMPO REAL</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📉 -${loss.toFixed(2)}%`);
+            }
+            
+            setTimeout(() => {
+                if (pairState[sym]) {
+                    pairState[sym]._signalClosed = false;
+                    pairState[sym]._signalSent = false;
+                    pairState[sym]._tp1Hit = false;
+                    pairState[sym]._slHit = false;
+                    pairState[sym].signalExpired = false;
+                    pairState[sym].lastSignal = null;
+                    pairState[sym]._lastSignalProb = 0;
+                    pairState[sym]._pendingSpike = null;
+                    pairState[sym]._signalGenerated = false;
+                    pairState[sym]._tpPrice = null;
+                    pairState[sym]._slPrice = null;
+                    pairState[sym]._entryPrice = null;
+                }
+            }, 1000);
+            return;
+        }
+    }
 }
 
 function analyzeSignal(sym) {
@@ -216,7 +305,17 @@ function analyzeSignal(sym) {
             isProcessingQueue = false; processNextInQueue(); return;
         }
         if (!signalsActive) { isProcessingQueue = false; processNextInQueue(); return; }
+        
         st._lastCandleClose = st.price;
+        
+        // ✅ MONITOREO EN TIEMPO REAL
+        if (st.lastSignal && !st.signalExpired) {
+            checkRealTimeTP_SL(sym);
+            if (st.signalExpired) {
+                isProcessingQueue = false; processNextInQueue(); return;
+            }
+            isProcessingQueue = false; processNextInQueue(); return;
+        }
         
         if (st._signalClosed) {
             st._signalSent = false;
@@ -225,59 +324,6 @@ function analyzeSignal(sym) {
             st.lastSignal = null;
             st.signalExpired = false;
             st._signalGenerated = false;
-            isProcessingQueue = false; processNextInQueue(); return;
-        }
-        
-        if (st.lastSignal && !st.signalExpired) {
-            const signal = st.lastSignal;
-            const price = st.price;
-            let signalClosed = false;
-            
-            if (!st._tp1Hit && price >= signal.tp1) {
-                st._tp1Hit = true;
-                signal.status = 'TP1 🎯';
-                signalClosed = true;
-                wins++;
-                addLog(`✅ ${sym}: TP ALCANZADO (+${signal.tpPercent?.toFixed(2) || '?'}%)`, 'success');
-                if (signal.telegram) {
-                    sendTelegramMessage(`✅ <b>TP ALCANZADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n📈 +${signal.tpPercent?.toFixed(2) || '?'}%`);
-                }
-            }
-            
-            if (!st._tp1Hit && !st._slHit && price <= signal.sl) {
-                st._slHit = true;
-                signal.status = 'SL 🛑';
-                signalClosed = true;
-                losses++;
-                addLog(`❌ ${sym}: SL EJECUTADO (-${signal.slPercent?.toFixed(2) || '?'}%)`, 'error');
-                if (signal.telegram) {
-                    sendTelegramMessage(`❌ <b>SL EJECUTADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${signal.price.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n📉 -${signal.slPercent?.toFixed(2) || '?'}%`);
-                }
-            }
-            
-            if (signalClosed || st._tp1Hit || st._slHit) {
-                st.signalExpired = true;
-                st._signalClosed = true;
-                st._signalSent = false;
-                st._lastSignalProb = 0;
-                st._pendingSpike = null;
-                st.lastSignal = null;
-                st._signalGenerated = false;
-                setTimeout(() => {
-                    if (pairState[sym]) {
-                        pairState[sym]._signalClosed = false;
-                        pairState[sym]._signalSent = false;
-                        pairState[sym]._tp1Hit = false;
-                        pairState[sym]._slHit = false;
-                        pairState[sym].signalExpired = false;
-                        pairState[sym].lastSignal = null;
-                        pairState[sym]._lastSignalProb = 0;
-                        pairState[sym]._pendingSpike = null;
-                        pairState[sym]._signalGenerated = false;
-                    }
-                }, 1000);
-                isProcessingQueue = false; processNextInQueue(); return;
-            }
             isProcessingQueue = false; processNextInQueue(); return;
         }
         
@@ -290,8 +336,12 @@ function analyzeSignal(sym) {
                 st._slHit = false;
                 st._signalClosed = false;
                 st._lastSignalProb = 0;
+                st._tpPrice = signal.tp1;
+                st._slPrice = signal.sl;
+                st._entryPrice = signal.price;
                 lastSignalTime[sym] = Date.now();
                 totalSignals++;
+                
                 const msg = `🟢 <b>🐙 KRAKEN PRO - SEÑAL</b>\n\n` +
                     `<b>📊 Par:</b> ${signal.sym}\n` +
                     `<b>📈 Dirección:</b> 📈 COMPRA\n` +
@@ -302,7 +352,7 @@ function analyzeSignal(sym) {
                     `<b>📉 SL %:</b> ${signal.slPercent?.toFixed(2) || '?'}%\n` +
                     `<b>📈 TP %:</b> ${signal.tpPercent?.toFixed(2) || '?'}%\n` +
                     `<b>⏰ Hora:</b> ${signal.time}\n\n` +
-                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN`;
+                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN\n📊 MONITOREO EN TIEMPO REAL`;
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; processNextInQueue(); return;
@@ -353,6 +403,12 @@ function handleMsg(data) {
         const st = pairState[sym];
         if (!st || !data.tick?.quote) return;
         st.price = parseFloat(data.tick.quote);
+        
+        // ✅ VERIFICAR TP/SL EN CADA TICK (TIEMPO REAL)
+        if (dataLoaded && signalsActive && st.lastSignal && !st.signalExpired) {
+            checkRealTimeTP_SL(sym);
+        }
+        
         const now = new Date();
         const minutes = now.getMinutes();
         const candleKey = `${now.getHours()}:${minutes}`;
@@ -386,7 +442,7 @@ function openWS(url) {
             addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📨 Esperando señales...`);
+                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n📨 Esperando señales...`);
             }
         }, 5000);
     };
@@ -459,14 +515,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 CONFIGURACIÓN MÁXIMA PRECISIÓN');
-console.log(`📊 Probabilidad: ${CONFIG.MIN_PROBABILITY}% | Temporalidad: ${TIMEFRAME/60}min`);
-console.log(`📊 Rango Grinding: ${CONFIG.GRINDING_THRESHOLD}% | TP Ratio: ${CONFIG.TP_RATIO}`);
+console.log('🎯 MONITOREO EN TIEMPO REAL');
 
-addLog('🎯 Iniciando KRAKEN PRO (MÁXIMA PRECISIÓN)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (MONITOREO EN TIEMPO REAL)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n📨 Señales en tiempo real\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
