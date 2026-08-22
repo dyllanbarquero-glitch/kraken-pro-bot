@@ -4,13 +4,12 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('🐙 KRAKEN PRO - SPIKE FORECASTER MAX');
-console.log('📊 SIN SEÑALES DUPLICADAS - COOLDOWN 2min');
+console.log('📊 1 OPERACIÓN ACTIVA POR PAR');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
 const TIMEFRAME = 60;
 const MOMENTUM_THRESHOLD = 0.20;
-const COOLDOWN_MINUTES = 2; // ⏱️ 2 minutos de cooldown
 
 const CONFIG = {
     MIN_PROBABILITY: 90,
@@ -19,8 +18,7 @@ const CONFIG = {
     TP_RATIO: 1.0,
     SL_BASE: 0.30,
     MIN_CANDLES: 30,
-    MAX_CANDLES: 300,
-    COOLDOWN: COOLDOWN_MINUTES * 60 * 1000 // 2 minutos en ms
+    MAX_CANDLES: 300
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -66,7 +64,7 @@ ALL_PAIRS.forEach(p => {
         _tpPrice: null,
         _slPrice: null,
         _entryPrice: null,
-        _lastSignalTime: 0 // Para cooldown
+        _hasActiveOperation: false // 🔥 CLAVE: indica si hay operación activa
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
@@ -182,9 +180,8 @@ function checkSpikeSignal(sym) {
     if (!st || st.price === null || !st.candles || st.candles.length < CONFIG.MIN_CANDLES) return null;
     if (!signalsActive) return null;
     
-    // ✅ COOLDOWN: No generar señal si pasó menos de 2 minutos
-    const now = Date.now();
-    if (now - st._lastSignalTime < CONFIG.COOLDOWN) {
+    // 🔥 SOLO GENERAR SEÑAL SI NO HAY OPERACIÓN ACTIVA EN ESTE PAR
+    if (st._hasActiveOperation) {
         return null;
     }
     
@@ -216,7 +213,7 @@ function checkSpikeSignal(sym) {
         st._tpPrice = signal.tp1;
         st._slPrice = signal.sl;
         st._entryPrice = price;
-        st._lastSignalTime = now; // Guardar tiempo de señal
+        st._hasActiveOperation = true; // 🔥 MARCAR OPERACIÓN ACTIVA
         addLog(`🔔 ${sym}: 📈 SEÑAL ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
         return signal;
     }
@@ -236,6 +233,7 @@ function checkRealTimeTP_SL(sym) {
             st._tp1Hit = true;
             st.signalExpired = true;
             st._signalClosed = true;
+            st._hasActiveOperation = false; // 🔥 LIBERAR PARA NUEVA OPERACIÓN
             signal.status = 'TP1 🎯';
             wins++;
             
@@ -246,22 +244,8 @@ function checkRealTimeTP_SL(sym) {
                 sendTelegramMessage(`✅ <b>TP ALCANZADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🎯 TP: $${signal.tp1.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📈 +${gain.toFixed(2)}%`);
             }
             
-            setTimeout(() => {
-                if (pairState[sym]) {
-                    pairState[sym]._signalClosed = false;
-                    pairState[sym]._signalSent = false;
-                    pairState[sym]._tp1Hit = false;
-                    pairState[sym]._slHit = false;
-                    pairState[sym].signalExpired = false;
-                    pairState[sym].lastSignal = null;
-                    pairState[sym]._lastSignalProb = 0;
-                    pairState[sym]._pendingSpike = null;
-                    pairState[sym]._signalGenerated = false;
-                    pairState[sym]._tpPrice = null;
-                    pairState[sym]._slPrice = null;
-                    pairState[sym]._entryPrice = null;
-                }
-            }, 1000);
+            // Resetear estado inmediatamente
+            resetPairState(sym);
             return;
         }
     }
@@ -271,6 +255,7 @@ function checkRealTimeTP_SL(sym) {
             st._slHit = true;
             st.signalExpired = true;
             st._signalClosed = true;
+            st._hasActiveOperation = false; // 🔥 LIBERAR PARA NUEVA OPERACIÓN
             signal.status = 'SL 🛑';
             losses++;
             
@@ -281,25 +266,29 @@ function checkRealTimeTP_SL(sym) {
                 sendTelegramMessage(`❌ <b>SL EJECUTADO</b>\n\n📊 ${signal.sym}\n📈 COMPRA\n💲 Entrada: $${st._entryPrice.toFixed(4)}\n🛑 SL: $${signal.sl.toFixed(4)}\n💲 Cierre: $${price.toFixed(4)}\n📉 -${loss.toFixed(2)}%`);
             }
             
-            setTimeout(() => {
-                if (pairState[sym]) {
-                    pairState[sym]._signalClosed = false;
-                    pairState[sym]._signalSent = false;
-                    pairState[sym]._tp1Hit = false;
-                    pairState[sym]._slHit = false;
-                    pairState[sym].signalExpired = false;
-                    pairState[sym].lastSignal = null;
-                    pairState[sym]._lastSignalProb = 0;
-                    pairState[sym]._pendingSpike = null;
-                    pairState[sym]._signalGenerated = false;
-                    pairState[sym]._tpPrice = null;
-                    pairState[sym]._slPrice = null;
-                    pairState[sym]._entryPrice = null;
-                }
-            }, 1000);
+            resetPairState(sym);
             return;
         }
     }
+}
+
+function resetPairState(sym) {
+    const st = pairState[sym];
+    if (!st) return;
+    st._signalClosed = false;
+    st._signalSent = false;
+    st._tp1Hit = false;
+    st._slHit = false;
+    st.signalExpired = false;
+    st.lastSignal = null;
+    st._lastSignalProb = 0;
+    st._pendingSpike = null;
+    st._signalGenerated = false;
+    st._tpPrice = null;
+    st._slPrice = null;
+    st._entryPrice = null;
+    st._hasActiveOperation = false;
+    addLog(`🔄 ${sym}: Estado reseteado - Listo para nueva operación`, 'info');
 }
 
 function analyzeSignal(sym) {
@@ -323,12 +312,7 @@ function analyzeSignal(sym) {
         }
         
         if (st._signalClosed) {
-            st._signalSent = false;
-            st._lastSignalProb = 0;
-            st._pendingSpike = null;
-            st.lastSignal = null;
-            st.signalExpired = false;
-            st._signalGenerated = false;
+            resetPairState(sym);
             isProcessingQueue = false; processNextInQueue(); return;
         }
         
@@ -357,7 +341,7 @@ function analyzeSignal(sym) {
                     `<b>📉 SL %:</b> ${signal.slPercent?.toFixed(2) || '?'}%\n` +
                     `<b>📈 TP %:</b> ${signal.tpPercent?.toFixed(2) || '?'}%\n` +
                     `<b>⏰ Hora:</b> ${signal.time}\n\n` +
-                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN\n📊 MONITOREO EN TIEMPO REAL\n⏱️ COOLDOWN 2min`;
+                    `🐙 THE KRAKEN PRO - 90% PRECISIÓN\n📊 MONITOREO EN TIEMPO REAL\n📌 1 OPERACIÓN POR PAR`;
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; processNextInQueue(); return;
@@ -446,7 +430,7 @@ function openWS(url) {
             addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n⏱️ COOLDOWN 2min entre señales\n📨 Esperando señales...`);
+                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 Probabilidad mínima: 90%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n📌 1 OPERACIÓN POR PAR\n📨 Esperando señales...`);
             }
         }, 5000);
     };
@@ -519,12 +503,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 SIN SEÑALES DUPLICADAS - COOLDOWN 2min');
+console.log('🎯 1 OPERACIÓN POR PAR');
 
-addLog('🎯 Iniciando KRAKEN PRO (SIN DUPLICADOS)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (1 OPERACIÓN POR PAR)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n⏱️ COOLDOWN 2min entre señales\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 Probabilidad mínima: ${CONFIG.MIN_PROBABILITY}%\n⏱️ Temporalidad: ${TIMEFRAME/60} min\n📌 1 OPERACIÓN POR PAR\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
