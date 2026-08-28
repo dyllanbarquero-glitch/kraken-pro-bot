@@ -8,12 +8,12 @@ console.log('📊 1 OPERACIÓN ACTIVA POR PAR');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 3600;
+const TIMEFRAME = 60;
 const MOMENTUM_THRESHOLD = 0.30;
 
 const CONFIG = {
     MIN_PROBABILITY: 80,
-    LOOKBACK: 15,
+    LOOKBACK: 30,
     GRINDING_THRESHOLD: 3.0,
     TP_RATIO: 1.0,
     SL_BASE: 0.15,
