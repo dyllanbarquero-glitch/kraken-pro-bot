@@ -16,9 +16,9 @@ const CONFIG = {
     LOOKBACK: 15,
     GRINDING_THRESHOLD: 0.05,
     TP_RATIO: 1.0,
-    SL_BASE: 0.30,
+    SL_BASE: 0.15,
     MIN_CANDLES: 30,
-    MAX_CANDLES: 300
+    MAX_CANDLES: 500
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
