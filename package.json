@@ -1,7 +1,7 @@
 {
   "name": "kraken-pro",
-  "version": "6.9.0",
-  "description": "🐙 KRAKEN PRO - Spike Forecaster",
+  "version": "7.0.0",
+  "description": "🐙 KRAKEN PRO - SOLO TENDENCIA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
