@@ -12,12 +12,12 @@ const TIMEFRAME = 60;
 
 // 🔥 CONFIGURACIÓN - SOLO TENDENCIA
 const CONFIG = {
-    MIN_PROBABILITY: 80,
-    LOOKBACK: 30,
-    TREND_THRESHOLD: 1.0,        // Rango mínimo para tendencia
-    MOMENTUM_TREND: 0.30,        // Momentum mínimo para tendencia
+    MIN_PROBABILITY: 70,
+    LOOKBACK: 3,
+    TREND_THRESHOLD: 0.30,        // Rango mínimo para tendencia
+    MOMENTUM_TREND: 0.15,        // Momentum mínimo para tendencia
     TP_RATIO: 1.0,
-    SL_BASE: 0.15,
+    SL_BASE: 0.25,
     MIN_CANDLES: 30,
     MAX_CANDLES: 500
 };
