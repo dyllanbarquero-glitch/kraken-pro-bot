@@ -12,7 +12,7 @@ const TIMEFRAME = 60;
 
 // 🔥 CONFIGURACIÓN RENTABLE Y REALISTA
 const CONFIG = {
-    MIN_PROBABILITY: 70,           // 🔥 Señales de calidad
+    MIN_PROBABILITY: 50,           // 🔥 Señales de calidad
     LOOKBACK: 20,                  // 🔥 Equilibrio perfecto
     TREND_THRESHOLD: 0.40,         // 🔥 Detecta tendencias suaves
     MOMENTUM_TREND: 0.20,          // 🔥 Filtra movimientos sin fuerza
