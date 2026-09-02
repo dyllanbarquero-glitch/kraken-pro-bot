@@ -13,7 +13,7 @@ const TIMEFRAME = 60;
 // 🔥 CONFIGURACIÓN - SOLO TENDENCIA
 const CONFIG = {
     MIN_PROBABILITY: 70,
-    LOOKBACK: 3,
+    LOOKBACK: 15,
     TREND_THRESHOLD: 0.30,        // Rango mínimo para tendencia
     MOMENTUM_TREND: 0.15,        // Momentum mínimo para tendencia
     TP_RATIO: 1.0,
