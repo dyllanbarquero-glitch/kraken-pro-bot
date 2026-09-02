@@ -13,7 +13,7 @@ const TIMEFRAME = 60;
 // 🔥 CONFIGURACIÓN
 const CONFIG = {
     MIN_PROBABILITY: 80,
-    LOOKBACK: 30,
+    LOOKBACK: 15,
     GRINDING_THRESHOLD: 1.0,
     TREND_THRESHOLD: 1.0,        // 🔥 NUEVO: Rango mínimo para tendencia
     MOMENTUM_TREND: 0.30,        // 🔥 NUEVO: Momentum mínimo para tendencia
