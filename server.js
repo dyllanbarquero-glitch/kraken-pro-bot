@@ -3,20 +3,19 @@ const path = require('path');
 const app = express();
 const WebSocket = require('ws');
 
-console.log('🐙 KRAKEN PRO - GRINDING + TENDENCIA');
-console.log('📊 2 ESTRATEGIAS: Lateral + Tendencia');
+console.log('🐙 KRAKEN PRO - SOLO TENDENCIA');
+console.log('📊 ENTRADAS SOLO EN MOVIMIENTO FUERTE');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
 const TIMEFRAME = 60;
 
-// 🔥 CONFIGURACIÓN
+// 🔥 CONFIGURACIÓN - SOLO TENDENCIA
 const CONFIG = {
     MIN_PROBABILITY: 80,
-    LOOKBACK: 15,
-    GRINDING_THRESHOLD: 1.0,
-    TREND_THRESHOLD: 1.0,        // 🔥 NUEVO: Rango mínimo para tendencia
-    MOMENTUM_TREND: 0.30,        // 🔥 NUEVO: Momentum mínimo para tendencia
+    LOOKBACK: 30,
+    TREND_THRESHOLD: 1.0,        // Rango mínimo para tendencia
+    MOMENTUM_TREND: 0.30,        // Momentum mínimo para tendencia
     TP_RATIO: 1.0,
     SL_BASE: 0.15,
     MIN_CANDLES: 30,
@@ -54,10 +53,7 @@ ALL_PAIRS.forEach(p => {
         _lastCandleClose: null, _lastLogTime: 0,
         _tp1Hit: false, _slHit: false,
         _isBoom: true,
-        _spikeProbability: 0,
-        _isGrinding: false,
-        _isTrend: false,           // 🔥 NUEVO: Detección de tendencia
-        _isExhausted: false,
+        _isTrend: false,
         _pendingSpike: null,
         _signalSent: false,
         _signalClosed: false,
@@ -68,8 +64,7 @@ ALL_PAIRS.forEach(p => {
         _slPrice: null,
         _entryPrice: null,
         _hasActiveOperation: false,
-        _trendStrength: 0,
-        _signalType: null          // 'grinding' o 'trend'
+        _trendStrength: 0
     };
     lastCandleKey[p] = null;
     candleCloseProcessed[p] = false;
@@ -143,7 +138,7 @@ function calculateTPSL(price, candles, isBoom) {
     };
 }
 
-// 🔥 NUEVA FUNCIÓN: DETECTAR TENDENCIA
+// 🔥 DETECTAR TENDENCIA (sin grinding)
 function detectTrend(sym) {
     const st = pairState[sym];
     if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) return false;
@@ -156,7 +151,7 @@ function detectTrend(sym) {
     const range = ((high - low) / high) * 100;
     const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
     
-    // Tendencia cuando: rango > 1% y momentum > 0.30%
+    // 🔥 SOLO TENDENCIA: rango > 1% y momentum > 0.30%
     const isTrend = range > CONFIG.TREND_THRESHOLD && Math.abs(momentum) > CONFIG.MOMENTUM_TREND;
     
     if (isTrend) {
@@ -170,85 +165,34 @@ function detectTrend(sym) {
     return isTrend;
 }
 
-// FUNCIÓN MODIFICADA: DETECTAR GRINDING (original)
-function detectGrinding(sym) {
-    const st = pairState[sym];
-    if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) return false;
-    
-    const candles = st.candles;
-    const lookback = Math.min(CONFIG.LOOKBACK, candles.length - 5);
-    const recentCandles = candles.slice(-lookback);
-    const high = Math.max(...recentCandles);
-    const low = Math.min(...recentCandles);
-    const range = ((high - low) / high) * 100;
-    const mean = recentCandles.reduce((a, b) => a + b, 0) / recentCandles.length;
-    const variance = recentCandles.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentCandles.length;
-    const stdDev = Math.sqrt(variance);
-    const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
-    const grindingThreshold = CONFIG.GRINDING_THRESHOLD;
-    const isGrinding = range < grindingThreshold && stdDev < 3;
-    const isExhausted = Math.abs(momentum) < 0.20;
-    
-    st._isGrinding = isGrinding;
-    st._isExhausted = isExhausted;
-    
-    if (isGrinding) {
-        addLog(`📊 ${sym}: GRINDING | Rango: ${range.toFixed(3)}%`, 'spike');
-    }
-    
-    return isGrinding && isExhausted;
-}
-
-// FUNCIÓN MODIFICADA: CALCULAR PROBABILIDAD (GRINDING + TENDENCIA)
-function calculateSpikeProbability(sym) {
+// 🔥 CALCULAR PROBABILIDAD (SOLO TENDENCIA)
+function calculateTrendProbability(sym) {
     const st = pairState[sym];
     if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) return 0;
     
     const candles = st.candles;
-    const lookback = Math.min(CONFIG.LOOKBACK, candles.length - 5);
-    const recentCandles = candles.slice(-lookback);
-    const high = Math.max(...recentCandles);
-    const low = Math.min(...recentCandles);
-    const range = ((high - low) / high) * 100;
     const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
+    const isTrend = detectTrend(sym);
     
     let probability = 0;
     let signalType = null;
-    let signalMode = null;
     
-    // 🔥 MODO 1: GRINDING (mercado lateral)
-    const isGrinding = detectGrinding(sym);
-    if (isGrinding) {
-        const baseProb = 60 + (1 - range / CONFIG.GRINDING_THRESHOLD) * 30;
-        const boost = Math.random() * 10;
-        probability = Math.min(99, Math.floor(baseProb + boost));
-        signalType = 'MULTUP';
-        signalMode = 'GRINDING';
-        st._signalType = 'grinding';
-    }
-    
-    // 🔥 MODO 2: TENDENCIA (mercado en movimiento)
-    const isTrend = detectTrend(sym);
-    if (isTrend && !isGrinding) {
+    if (isTrend) {
         // En tendencia, la probabilidad es la fuerza del momentum
         const momentumStrength = Math.min(99, 70 + Math.abs(momentum) * 5);
         probability = Math.min(99, Math.floor(momentumStrength));
         signalType = 'MULTUP';
-        signalMode = 'TENDENCIA';
-        st._signalType = 'trend';
-    }
-    
-    if (probability > 0) {
-        st._pendingSpike = { probability, signalType, signalMode };
-        if (signalMode === 'TENDENCIA') {
-            addLog(`📈 ${sym}: TENDENCIA FUERTE | Momentum: ${momentum.toFixed(2)}% | Prob: ${probability}%`, 'trend');
-        }
+        addLog(`📈 ${sym}: TENDENCIA FUERTE | Momentum: ${momentum.toFixed(2)}% | Prob: ${probability}%`, 'trend');
     } else {
         st._pendingSpike = null;
         if (st._signalClosed) {
             st._signalSent = false;
             st._lastSignalProb = 0;
         }
+    }
+    
+    if (probability > 0 && isTrend) {
+        st._pendingSpike = { probability, signalType };
     }
     
     st._spikeProbability = probability;
@@ -271,10 +215,10 @@ function checkSpikeSignal(sym) {
     }
     
     const minProb = CONFIG.MIN_PROBABILITY;
-    const probability = calculateSpikeProbability(sym);
+    const probability = calculateTrendProbability(sym);
     
     if (st._pendingSpike && st._pendingSpike.probability >= minProb && !st._signalSent && !st._signalClosed) {
-        const { signalType, signalMode } = st._pendingSpike;
+        const { signalType } = st._pendingSpike;
         const price = st.price;
         const result = calculateTPSL(price, st.candles, true);
         const signal = {
@@ -283,8 +227,7 @@ function checkSpikeSignal(sym) {
             slPercent: result.slPercent, tpPercent: result.tpPercent,
             probability: st._pendingSpike.probability,
             time: new Date().toLocaleTimeString(),
-            status: 'PENDIENTE',
-            signalMode: signalMode || 'GRINDING'
+            status: 'PENDIENTE'
         };
         st._signalSent = true;
         st._signalClosed = false;
@@ -294,7 +237,7 @@ function checkSpikeSignal(sym) {
         st._slPrice = signal.sl;
         st._entryPrice = price;
         st._hasActiveOperation = true;
-        addLog(`🔔 ${sym}: 📈 SEÑAL ${signal.signalMode} | Prob: ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
+        addLog(`🔔 ${sym}: 📈 SEÑAL TENDENCIA ${signal.probability}% | Entry: $${price.toFixed(4)} | TP: $${signal.tp1.toFixed(4)} | SL: $${signal.sl.toFixed(4)}`, 'signal');
         return signal;
     }
     return null;
@@ -411,11 +354,9 @@ function analyzeSignal(sym) {
                 lastSignalTime[sym] = Date.now();
                 totalSignals++;
                 
-                const modeEmoji = signal.signalMode === 'TENDENCIA' ? '📈' : '📊';
-                const msg = `🟢 <b>🐙 KRAKEN PRO - SEÑAL ${signal.signalMode}</b>\n\n` +
+                const msg = `📈 <b>🐙 KRAKEN PRO - SEÑAL TENDENCIA</b>\n\n` +
                     `<b>📊 Par:</b> ${signal.sym}\n` +
                     `<b>📈 Dirección:</b> 📈 COMPRA\n` +
-                    `<b>🎯 Modo:</b> ${signal.signalMode}\n` +
                     `<b>🎯 Probabilidad:</b> ${signal.probability}%\n` +
                     `<b>💲 Entrada:</b> $${signal.price.toFixed(4)}\n` +
                     `<b>🎯 TP1:</b> $${signal.tp1.toFixed(4)}\n` +
@@ -423,14 +364,14 @@ function analyzeSignal(sym) {
                     `<b>📉 SL %:</b> ${signal.slPercent?.toFixed(2) || '?'}%\n` +
                     `<b>📈 TP %:</b> ${signal.tpPercent?.toFixed(2) || '?'}%\n` +
                     `<b>⏰ Hora:</b> ${signal.time}\n\n` +
-                    `🐙 THE KRAKEN PRO - GRINDING + TENDENCIA\n📊 MONITOREO EN TIEMPO REAL\n📌 1 OPERACIÓN POR PAR`;
+                    `🐙 THE KRAKEN PRO - SOLO TENDENCIA\n📊 MONITOREO EN TIEMPO REAL\n📌 1 OPERACIÓN POR PAR\n🎯 ENTRADAS EN MOVIMIENTO FUERTE`;
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; processNextInQueue(); return;
             }
         }
         
-        calculateSpikeProbability(sym);
+        calculateTrendProbability(sym);
     } catch (e) { addLog(`⚠️ Error en ${sym}: ${e.message}`, 'error'); }
     isProcessingQueue = false; processNextInQueue();
 }
@@ -509,10 +450,10 @@ function openWS(url) {
         setTimeout(() => {
             signalsActive = true;
             running = true;
-            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS (GRINDING + TENDENCIA)`, 'start');
+            addLog(`🚀 KRAKEN PRO - SEÑALES ACTIVADAS (SOLO TENDENCIA)`, 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 2 ESTRATEGIAS:\n📊 GRINDING (lateral)\n📈 TENDENCIA (movimiento)\n🎯 Probabilidad mínima: 80%\n⏱️ Temporalidad: 1 minuto\n📊 MONITOREO EN TIEMPO REAL\n📌 1 OPERACIÓN POR PAR\n📨 Esperando señales...`);
+                sendTelegramMessage(`🐙 *KRAKEN PRO ACTIVADO*\n\n✅ Bot conectado\n📡 Monitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n🎯 ESTRATEGIA: SOLO TENDENCIA\n📈 Entradas en movimiento fuerte\n🎯 Probabilidad mínima: 80%\n⏱️ Temporalidad: 1 minuto\n📌 1 OPERACIÓN POR PAR\n📊 MONITOREO EN TIEMPO REAL\n📨 Esperando señales...`);
             }
         }, 5000);
     };
@@ -585,12 +526,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 console.log('⏰ KRAKEN PRO - 24/7 ACTIVO');
-console.log('🎯 GRINDING + TENDENCIA');
+console.log('🎯 SOLO TENDENCIA - ENTRADAS EN MOVIMIENTO FUERTE');
 
-addLog('🎯 Iniciando KRAKEN PRO (GRINDING + TENDENCIA)...', 'info');
+addLog('🎯 Iniciando KRAKEN PRO (SOLO TENDENCIA)...', 'info');
 
 setTimeout(() => {
-    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 2 ESTRATEGIAS:\n📊 GRINDING (lateral)\n📈 TENDENCIA (movimiento)\n🎯 Probabilidad mínima: 80%\n⏱️ Temporalidad: 1 minuto\n📌 1 OPERACIÓN POR PAR\n📊 MONITOREO EN TIEMPO REAL\n⏰ ${new Date().toLocaleString()}`);
+    sendTelegramMessage(`🐙 KRAKEN PRO INICIADO\n\n🔄 Conectando a Deriv...\n⏳ El bot se activará automáticamente\n📡 ${ALL_PAIRS.length} símbolos\n🎯 ESTRATEGIA: SOLO TENDENCIA\n📈 Entradas en movimiento fuerte\n🎯 Probabilidad mínima: 80%\n⏱️ Temporalidad: 1 minuto\n📌 1 OPERACIÓN POR PAR\n⏰ ${new Date().toLocaleString()}`);
 }, 3000);
 
 connectDeriv();
