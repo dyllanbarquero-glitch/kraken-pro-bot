@@ -13,7 +13,7 @@ const MOMENTUM_THRESHOLD = 0.30; // Aumentado
 
 const CONFIG = {
     LOOKBACK: 15,
-    GRINDING_THRESHOLD: 0.3,    // 🔥 Subido de 0.08 a 0.3
+    GRINDING_THRESHOLD: 1.0,    // 🔥 Subido de 0.08 a 0.3
     TP_RATIO: 1.2,
     SL_BASE: 0.30,
     MIN_CANDLES: 20,            // 🔥 Bajado de 35 a 20
