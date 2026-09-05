@@ -6,6 +6,7 @@ const WebSocket = require('ws');
 console.log('KRAKEN PRO - SPIKE FORECASTER');
 console.log('SIN FILTRO DE PROBABILIDAD');
 console.log('SIN FILTRO DE HORARIOS - 24/7');
+console.log('SIN FILTRO RSI');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
@@ -14,13 +15,11 @@ const MOMENTUM_THRESHOLD = 0.20;
 
 const CONFIG = {
     LOOKBACK: 20,
-    GRINDING_THRESHOLD: 3.08,
+    GRINDING_THRESHOLD: 2.5,
     TP_RATIO: 1.2,
     SL_BASE: 0.30,
     MIN_CANDLES: 35,
-    MAX_CANDLES: 300,
-    MIN_RSI: 25,
-    MAX_RSI: 75
+    MAX_CANDLES: 500
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -74,21 +73,21 @@ ALL_PAIRS.forEach(p => {
 });
 
 function addLog(msg, type) {
-    const time = new Date().toLocaleTimeString();
-    tradeLogs.unshift({ time, msg, type });
+    var time = new Date().toLocaleTimeString();
+    tradeLogs.unshift({ time: time, msg: msg, type: type });
     if (tradeLogs.length > 200) tradeLogs.pop();
     console.log('[' + time + '] ' + msg);
 }
 
 async function sendTelegramMessage(message) {
     try {
-        const url = 'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/sendMessage';
-        const response = await fetch(url, {
+        var url = 'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/sendMessage';
+        var response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text: message, parse_mode: 'HTML' })
         });
-        const result = await response.json();
+        var result = await response.json();
         if (result.ok) {
             console.log('Mensaje enviado a Telegram');
             return true;
@@ -104,49 +103,37 @@ function round4(n) {
     return parseFloat(parseFloat(n).toFixed(4)); 
 }
 
-function checkRSI(candles) {
-    if (candles.length < 15) return true;
-    let gains = 0, losses = 0;
-    for (let i = candles.length - 15; i < candles.length - 1; i++) {
-        const diff = candles[i+1] - candles[i];
-        if (diff >= 0) gains += diff;
-        else losses -= diff;
-    }
-    const rsi = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
-    return rsi > CONFIG.MIN_RSI && rsi < CONFIG.MAX_RSI;
-}
-
 function hasGrindingConfirmation(candles, lookback) {
     lookback = lookback || 10;
     if (candles.length < lookback) return false;
-    const recent = candles.slice(-lookback);
-    const high = Math.max.apply(null, recent);
-    const low = Math.min.apply(null, recent);
-    const range = ((high - low) / high) * 100;
+    var recent = candles.slice(-lookback);
+    var high = Math.max.apply(null, recent);
+    var low = Math.min.apply(null, recent);
+    var range = ((high - low) / high) * 100;
     return range < 0.15;
 }
 
 function calculateTPSL(price, candles, isBoom) {
-    const lookback = Math.min(5, candles.length);
-    let avgRange = 0;
+    var lookback = Math.min(5, candles.length);
+    var avgRange = 0;
     if (candles.length >= lookback) {
-        const recent = candles.slice(-lookback);
-        let totalRange = 0;
-        for (let i = 1; i < recent.length; i++) {
+        var recent = candles.slice(-lookback);
+        var totalRange = 0;
+        for (var i = 1; i < recent.length; i++) {
             totalRange += Math.abs(recent[i] - recent[i-1]);
         }
         avgRange = totalRange / (recent.length - 1);
     }
     if (avgRange === 0 || isNaN(avgRange)) avgRange = price * 0.0025;
     
-    const slPercent = Math.max(0.0015, Math.min(0.0050, avgRange / price * 1.5));
-    const slBase = CONFIG.SL_BASE / 100;
-    const slPercentFinal = Math.max(0.0015, Math.min(0.0050, slPercent + slBase));
-    const slDistance = price * slPercentFinal;
-    const tpRatio = CONFIG.TP_RATIO;
-    const tpDistance = slDistance * tpRatio;
+    var slPercent = Math.max(0.0015, Math.min(0.0050, avgRange / price * 1.5));
+    var slBase = CONFIG.SL_BASE / 100;
+    var slPercentFinal = Math.max(0.0015, Math.min(0.0050, slPercent + slBase));
+    var slDistance = price * slPercentFinal;
+    var tpRatio = CONFIG.TP_RATIO;
+    var tpDistance = slDistance * tpRatio;
     
-    let slPrice, tp1;
+    var slPrice, tp1;
     if (isBoom) {
         slPrice = round4(price - slDistance);
         tp1 = round4(price + tpDistance);
@@ -166,28 +153,28 @@ function calculateTPSL(price, candles, isBoom) {
 }
 
 function calculateSpikeProbability(sym) {
-    const st = pairState[sym];
+    var st = pairState[sym];
     if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) return 0;
-    const candles = st.candles;
-    const lookback = Math.min(CONFIG.LOOKBACK, candles.length - 5);
-    const recentCandles = candles.slice(-lookback);
-    const high = Math.max.apply(null, recentCandles);
-    const low = Math.min.apply(null, recentCandles);
-    const range = ((high - low) / high) * 100;
-    const mean = recentCandles.reduce(function(a, b) { return a + b; }, 0) / recentCandles.length;
-    const variance = recentCandles.reduce(function(a, b) { return a + Math.pow(b - mean, 2); }, 0) / recentCandles.length;
-    const stdDev = Math.sqrt(variance);
-    const momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
-    const grindingThreshold = CONFIG.GRINDING_THRESHOLD;
-    const isGrinding = range < grindingThreshold && stdDev < 3;
-    const isExhausted = Math.abs(momentum) < MOMENTUM_THRESHOLD;
+    var candles = st.candles;
+    var lookback = Math.min(CONFIG.LOOKBACK, candles.length - 5);
+    var recentCandles = candles.slice(-lookback);
+    var high = Math.max.apply(null, recentCandles);
+    var low = Math.min.apply(null, recentCandles);
+    var range = ((high - low) / high) * 100;
+    var mean = recentCandles.reduce(function(a, b) { return a + b; }, 0) / recentCandles.length;
+    var variance = recentCandles.reduce(function(a, b) { return a + Math.pow(b - mean, 2); }, 0) / recentCandles.length;
+    var stdDev = Math.sqrt(variance);
+    var momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
+    var grindingThreshold = CONFIG.GRINDING_THRESHOLD;
+    var isGrinding = range < grindingThreshold && stdDev < 3;
+    var isExhausted = Math.abs(momentum) < MOMENTUM_THRESHOLD;
     st._isGrinding = isGrinding;
     st._isExhausted = isExhausted;
-    let probability = 0;
-    let signalType = null;
+    var probability = 0;
+    var signalType = null;
     if (isGrinding && isExhausted) {
-        const baseProb = 60 + (1 - range / grindingThreshold) * 30;
-        const boost = Math.random() * 10;
+        var baseProb = 60 + (1 - range / grindingThreshold) * 30;
+        var boost = Math.random() * 10;
         probability = Math.min(99, Math.floor(baseProb + boost));
         signalType = 'MULTUP';
         st._pendingSpike = { probability: probability, signalType: signalType };
@@ -204,7 +191,7 @@ function calculateSpikeProbability(sym) {
 }
 
 function checkSpikeSignal(sym) {
-    const st = pairState[sym];
+    var st = pairState[sym];
     if (!st || st.price === null || !st.candles || st.candles.length < CONFIG.MIN_CANDLES) return null;
     if (!signalsActive) return null;
     
@@ -218,21 +205,19 @@ function checkSpikeSignal(sym) {
         return null;
     }
     
-    if (!checkRSI(st.candles)) {
-        return null;
-    }
+    // 🔥 FILTRO RSI ELIMINADO
     
     if (!hasGrindingConfirmation(st.candles)) {
         return null;
     }
     
-    const probability = calculateSpikeProbability(sym);
+    var probability = calculateSpikeProbability(sym);
     
     if (st._pendingSpike && !st._signalSent && !st._signalClosed) {
-        const signalType = st._pendingSpike.signalType;
-        const price = st.price;
-        const result = calculateTPSL(price, st.candles, true);
-        const signal = {
+        var signalType = st._pendingSpike.signalType;
+        var price = st.price;
+        var result = calculateTPSL(price, st.candles, true);
+        var signal = {
             sym: sym,
             type: signalType,
             price: price,
@@ -259,12 +244,12 @@ function checkSpikeSignal(sym) {
 }
 
 function checkRealTimeTP_SL(sym) {
-    const st = pairState[sym];
+    var st = pairState[sym];
     if (!st || !st.lastSignal || st.signalExpired) return;
     
-    const signal = st.lastSignal;
-    const price = st.price;
-    const isBoom = true;
+    var signal = st.lastSignal;
+    var price = st.price;
+    var isBoom = true;
     
     if (!st._tp1Hit) {
         if ((isBoom && price >= signal.tp1) || (!isBoom && price <= signal.tp1)) {
@@ -275,7 +260,7 @@ function checkRealTimeTP_SL(sym) {
             signal.status = 'TP1';
             wins++;
             
-            const gain = ((price - st._entryPrice) / st._entryPrice * 100);
+            var gain = ((price - st._entryPrice) / st._entryPrice * 100);
             addLog(sym + ': TP ALCANZADO (+' + gain.toFixed(2) + '%)', 'success');
             
             if (signal.telegram) {
@@ -296,7 +281,7 @@ function checkRealTimeTP_SL(sym) {
             signal.status = 'SL';
             losses++;
             
-            const loss = ((st._entryPrice - price) / st._entryPrice * 100);
+            var loss = ((st._entryPrice - price) / st._entryPrice * 100);
             addLog(sym + ': SL EJECUTADO (-' + loss.toFixed(2) + '%)', 'error');
             
             if (signal.telegram) {
@@ -310,7 +295,7 @@ function checkRealTimeTP_SL(sym) {
 }
 
 function resetPairState(sym) {
-    const st = pairState[sym];
+    var st = pairState[sym];
     if (!st) return;
     st._signalClosed = false;
     st._signalSent = false;
@@ -334,7 +319,7 @@ function analyzeSignal(sym) {
     }
     isProcessingQueue = true;
     try {
-        const st = pairState[sym];
+        var st = pairState[sym];
         if (!st || st.price === null || !st.candles || st.candles.length < CONFIG.MIN_CANDLES) {
             isProcessingQueue = false; 
             processNextInQueue(); 
@@ -368,7 +353,7 @@ function analyzeSignal(sym) {
         }
         
         if (!st.lastSignal || st.signalExpired) {
-            const signal = checkSpikeSignal(sym);
+            var signal = checkSpikeSignal(sym);
             if (signal) {
                 st.lastSignal = signal;
                 st.signalExpired = false;
@@ -392,7 +377,7 @@ function analyzeSignal(sym) {
                     'SL %: ' + (signal.slPercent ? signal.slPercent.toFixed(2) : '?') + '%\n' +
                     'TP %: ' + (signal.tpPercent ? signal.tpPercent.toFixed(2) : '?') + '%\n' +
                     'Hora: ' + signal.time + '\n\n' +
-                    'KRAKEN PRO - 24/7\nSIN FILTRO DE PROBABILIDAD\nMONITOREO EN TIEMPO REAL\n1 OPERACION POR PAR';
+                    'KRAKEN PRO - SIN RSI\n24/7\nSIN FILTRO DE PROBABILIDAD\n1 OPERACION POR PAR';
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; 
@@ -494,7 +479,7 @@ function openWS(url) {
             addLog('KRAKEN PRO - SEÑALES ACTIVADAS', 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage('KRAKEN PRO ACTIVADO\n\nBot conectado\nMonitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nTemporalidad: 5 minutos\nMONITOREO EN TIEMPO REAL\n1 OPERACION POR PAR\nEsperando señales...');
+                sendTelegramMessage('KRAKEN PRO ACTIVADO\n\nBot conectado\nMonitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nSIN RSI\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\nEsperando señales...');
             }
         }, 5000);
     };
@@ -585,11 +570,12 @@ app.listen(PORT, '0.0.0.0', function() {
 console.log('KRAKEN PRO - 24/7 ACTIVO');
 console.log('SIN FILTRO DE HORARIOS');
 console.log('SIN FILTRO DE PROBABILIDAD');
+console.log('SIN FILTRO RSI');
 
-addLog('Iniciando KRAKEN PRO (24/7)...', 'info');
+addLog('Iniciando KRAKEN PRO (SIN RSI)...', 'info');
 
 setTimeout(function() {
-    sendTelegramMessage('KRAKEN PRO INICIADO\n\nConectando a Deriv...\nEl bot se activara automaticamente\n' + ALL_PAIRS.length + ' simbolos\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\nMONITOREO EN TIEMPO REAL\n' + new Date().toLocaleString());
+    sendTelegramMessage('KRAKEN PRO INICIADO\n\nConectando a Deriv...\nEl bot se activara automaticamente\n' + ALL_PAIRS.length + ' simbolos\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nSIN RSI\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\n' + new Date().toLocaleString());
 }, 3000);
 
 connectDeriv();
