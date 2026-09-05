@@ -18,7 +18,7 @@ const CONFIG = {
     SL_BASE: 0.30,
     MIN_CANDLES: 20,            // 🔥 Bajado de 35 a 20
     MAX_CANDLES: 300,
-    CONFIRMATION_RANGE: 0.5     // 🔥 Nuevo: rango para confirmación
+    CONFIRMATION_RANGE: 2.0     // 🔥 Nuevo: rango para confirmación
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
