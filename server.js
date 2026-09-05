@@ -4,22 +4,21 @@ const app = express();
 const WebSocket = require('ws');
 
 console.log('KRAKEN PRO - SPIKE FORECASTER');
-console.log('SIN FILTRO DE PROBABILIDAD');
-console.log('SIN FILTRO DE HORARIOS - 24/7');
-console.log('SIN FILTRO RSI');
+console.log('FILTROS FLEXIBLES - PARA PRUEBAS');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
 const TIMEFRAME = 300;
-const MOMENTUM_THRESHOLD = 0.20;
+const MOMENTUM_THRESHOLD = 0.30; // Aumentado
 
 const CONFIG = {
-    LOOKBACK: 20,
-    GRINDING_THRESHOLD: 2.5,
+    LOOKBACK: 15,
+    GRINDING_THRESHOLD: 0.3,    // 🔥 Subido de 0.08 a 0.3
     TP_RATIO: 1.2,
     SL_BASE: 0.30,
-    MIN_CANDLES: 35,
-    MAX_CANDLES: 500
+    MIN_CANDLES: 20,            // 🔥 Bajado de 35 a 20
+    MAX_CANDLES: 300,
+    CONFIRMATION_RANGE: 0.5     // 🔥 Nuevo: rango para confirmación
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
@@ -104,13 +103,17 @@ function round4(n) {
 }
 
 function hasGrindingConfirmation(candles, lookback) {
-    lookback = lookback || 10;
-    if (candles.length < lookback) return false;
+    lookback = lookback || 8;
+    if (candles.length < lookback) return true; // Si no hay suficientes, permitir
     var recent = candles.slice(-lookback);
     var high = Math.max.apply(null, recent);
     var low = Math.min.apply(null, recent);
     var range = ((high - low) / high) * 100;
-    return range < 0.15;
+    var result = range < CONFIG.CONFIRMATION_RANGE;
+    if (!result) {
+        addLog('Confirmacion grinding fallida: rango ' + range.toFixed(2) + '% (max ' + CONFIG.CONFIRMATION_RANGE + '%)', 'info');
+    }
+    return result;
 }
 
 function calculateTPSL(price, candles, isBoom) {
@@ -154,7 +157,10 @@ function calculateTPSL(price, candles, isBoom) {
 
 function calculateSpikeProbability(sym) {
     var st = pairState[sym];
-    if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) return 0;
+    if (!st.candles || st.candles.length < CONFIG.MIN_CANDLES) {
+        addLog(sym + ': Velas insuficientes (' + st.candles.length + '/' + CONFIG.MIN_CANDLES + ')', 'info');
+        return 0;
+    }
     var candles = st.candles;
     var lookback = Math.min(CONFIG.LOOKBACK, candles.length - 5);
     var recentCandles = candles.slice(-lookback);
@@ -166,24 +172,27 @@ function calculateSpikeProbability(sym) {
     var stdDev = Math.sqrt(variance);
     var momentum = (candles[candles.length - 1] - candles[candles.length - 6]) / candles[candles.length - 6] * 100;
     var grindingThreshold = CONFIG.GRINDING_THRESHOLD;
-    var isGrinding = range < grindingThreshold && stdDev < 3;
+    var isGrinding = range < grindingThreshold && stdDev < 5; // stdDev menos estricto
     var isExhausted = Math.abs(momentum) < MOMENTUM_THRESHOLD;
     st._isGrinding = isGrinding;
     st._isExhausted = isExhausted;
     var probability = 0;
     var signalType = null;
     if (isGrinding && isExhausted) {
-        var baseProb = 60 + (1 - range / grindingThreshold) * 30;
-        var boost = Math.random() * 10;
+        var baseProb = 50 + (1 - range / grindingThreshold) * 30;
+        var boost = Math.random() * 15;
         probability = Math.min(99, Math.floor(baseProb + boost));
         signalType = 'MULTUP';
         st._pendingSpike = { probability: probability, signalType: signalType };
-        addLog(sym + ': GRINDING 0.08% | Rango: ' + range.toFixed(3) + '% | Prob: ' + probability + '%', 'spike');
+        addLog(sym + ': GRINDING ' + range.toFixed(2) + '% | Prob: ' + probability + '%', 'spike');
     } else {
         st._pendingSpike = null;
         if (st._signalClosed) {
             st._signalSent = false;
             st._lastSignalProb = 0;
+        }
+        if (!isGrinding) {
+            addLog(sym + ': No grinding (rango ' + range.toFixed(2) + '% > ' + grindingThreshold + '%)', 'info');
         }
     }
     st._spikeProbability = probability;
@@ -204,8 +213,6 @@ function checkSpikeSignal(sym) {
         st._lastSignalProb = 0;
         return null;
     }
-    
-    // 🔥 FILTRO RSI ELIMINADO
     
     if (!hasGrindingConfirmation(st.candles)) {
         return null;
@@ -377,7 +384,7 @@ function analyzeSignal(sym) {
                     'SL %: ' + (signal.slPercent ? signal.slPercent.toFixed(2) : '?') + '%\n' +
                     'TP %: ' + (signal.tpPercent ? signal.tpPercent.toFixed(2) : '?') + '%\n' +
                     'Hora: ' + signal.time + '\n\n' +
-                    'KRAKEN PRO - SIN RSI\n24/7\nSIN FILTRO DE PROBABILIDAD\n1 OPERACION POR PAR';
+                    'KRAKEN PRO - FILTROS FLEXIBLES\n1 OPERACION POR PAR';
                 sendTelegramMessage(msg);
                 signal.telegram = true;
                 isProcessingQueue = false; 
@@ -479,7 +486,7 @@ function openWS(url) {
             addLog('KRAKEN PRO - SEÑALES ACTIVADAS', 'start');
             if (!activationSent) {
                 activationSent = true;
-                sendTelegramMessage('KRAKEN PRO ACTIVADO\n\nBot conectado\nMonitoreando BOOM500, BOOM600, BOOM900, BOOM1000\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nSIN RSI\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\nEsperando señales...');
+                sendTelegramMessage('KRAKEN PRO ACTIVADO\n\nBot conectado\nMonitoreando BOOM500, BOOM600, BOOM900, BOOM1000\nFILTROS FLEXIBLES\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\nEsperando señales...');
             }
         }, 5000);
     };
@@ -568,14 +575,12 @@ app.listen(PORT, '0.0.0.0', function() {
 });
 
 console.log('KRAKEN PRO - 24/7 ACTIVO');
-console.log('SIN FILTRO DE HORARIOS');
-console.log('SIN FILTRO DE PROBABILIDAD');
-console.log('SIN FILTRO RSI');
+console.log('FILTROS FLEXIBLES');
 
-addLog('Iniciando KRAKEN PRO (SIN RSI)...', 'info');
+addLog('Iniciando KRAKEN PRO (FILTROS FLEXIBLES)...', 'info');
 
 setTimeout(function() {
-    sendTelegramMessage('KRAKEN PRO INICIADO\n\nConectando a Deriv...\nEl bot se activara automaticamente\n' + ALL_PAIRS.length + ' simbolos\n24/7 - SIN FILTRO DE HORARIOS\nSIN FILTRO DE PROBABILIDAD\nSIN RSI\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\n' + new Date().toLocaleString());
+    sendTelegramMessage('KRAKEN PRO INICIADO\n\nConectando a Deriv...\nEl bot se activara automaticamente\n' + ALL_PAIRS.length + ' simbolos\nFILTROS FLEXIBLES\nTemporalidad: 5 minutos\n1 OPERACION POR PAR\n' + new Date().toLocaleString());
 }, 3000);
 
 connectDeriv();
