@@ -8,8 +8,8 @@ console.log('FILTROS FLEXIBLES - PARA PRUEBAS');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 300;
-const MOMENTUM_THRESHOLD = 0.30; // Aumentado
+const TIMEFRAME = 60;
+const MOMENTUM_THRESHOLD = 0.20; // Aumentado
 
 const CONFIG = {
     LOOKBACK: 15,
@@ -17,8 +17,8 @@ const CONFIG = {
     TP_RATIO: 1.2,
     SL_BASE: 0.30,
     MIN_CANDLES: 20,            // 🔥 Bajado de 35 a 20
-    MAX_CANDLES: 300,
-    CONFIRMATION_RANGE: 2.0     // 🔥 Nuevo: rango para confirmación
+    MAX_CANDLES: 500,
+    CONFIRMATION_RANGE: 3.0     // 🔥 Nuevo: rango para confirmación
 };
 
 const APP_ID = '33A0UhDa0Wa1FkvF9zlKh';
