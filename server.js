@@ -14,7 +14,7 @@ const MOMENTUM_THRESHOLD = 0.50;
 const CONFIG = {
     LOOKBACK: 15,
     GRINDING_THRESHOLD: 1.5,    // 🔥 Subido a 1.0%
-    TP_RATIO: 1.2,
+    TP_RATIO: 2.0,
     SL_BASE: 0.40,
     MIN_CANDLES: 20,
     MAX_CANDLES: 300,
