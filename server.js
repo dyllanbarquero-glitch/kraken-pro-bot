@@ -9,15 +9,15 @@ console.log('GRINDING 1.0% - PARA PRODUCCION');
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
 const TIMEFRAME = 3600;
-const MOMENTUM_THRESHOLD = 0.50;
+const MOMENTUM_THRESHOLD = 0.10;
 
 const CONFIG = {
-    LOOKBACK: 15,
-    GRINDING_THRESHOLD: 1.5,    // 🔥 Subido a 1.0%
-    TP_RATIO: 2.0,
+    LOOKBACK: 2,
+    GRINDING_THRESHOLD: 1.0,    // 🔥 Subido a 1.0%
+    TP_RATIO: 1.5,
     SL_BASE: 0.40,
     MIN_CANDLES: 20,
-    MAX_CANDLES: 300,
+    MAX_CANDLES: 500,
     CONFIRMATION_RANGE: 2.0     // 🔥 Subido a 2.0%
 };
 
