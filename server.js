@@ -8,7 +8,7 @@ console.log('GRINDING 1.0% - PARA PRODUCCION');
 
 const REST_BASE = 'https://api.derivws.com';
 const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
-const TIMEFRAME = 300;
+const TIMEFRAME = 3600;
 const MOMENTUM_THRESHOLD = 0.50;
 
 const CONFIG = {
