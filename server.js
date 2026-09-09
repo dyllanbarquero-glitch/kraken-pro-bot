@@ -7,7 +7,7 @@ console.log('KRAKEN PRO - SPIKE FORECASTER');
 console.log('GRINDING 1.0% - PARA PRODUCCION');
 
 const REST_BASE = 'https://api.derivws.com';
-const ALL_PAIRS = ['BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000'];
+const ALL_PAIRS = ['BOOM900'];
 const TIMEFRAME = 3600;
 const MOMENTUM_THRESHOLD = 0.10;
 
